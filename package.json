@@ -1,0 +1,13 @@
+{
+  "name": "jisilu-arbitrage",
+  "version": "0.4.0",
+  "private": true,
+  "description": "集思录 QDII/LOF/ETF 套利增强插件：三级实时溢价（IOPV/期货锚点/自算）、详情页决策面板",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "icons": "python3 tools/make-icons.py",
+    "verify:live": "node tools/verify-live.cjs",
+    "verify:detail": "node tools/verify-detail.cjs"
+  },
+  "devDependencies": {}
+}

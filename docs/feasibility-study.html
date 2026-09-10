@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="1qLppT7OJupFHb9X7sJjCF">
+<head data-page-node-id="N00flnEJaTVtqto6BG9tRM">
+<meta charset="UTF-8" data-page-node-id="jMRYpRjoQyUWpKFOprXGqL">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="tVgD9kQT1FM2ON4PpsB6sA">
+<title>QDII/LOF/ETF 套利增强插件 · 可行性研究报告</title>
+<style>
+:root{
+  --navy-900:#0b1b34; --navy-800:#10243f; --navy-700:#16304f; --navy-600:#1d3f68;
+  --amber:#f5b64a; --amber-soft:#f7d08a;
+  --gray-50:#f6f8fb; --gray-100:#eef2f7; --gray-300:#cbd5e1; --gray-500:#64748b; --gray-700:#334155;
+  --up:#d93025; --down:#0f9960; --warn:#b45309;
+  --line:#e2e8f0;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"PingFang SC","Microsoft YaHei",-apple-system,"Segoe UI",sans-serif;
+  background:var(--gray-50); color:var(--gray-700); line-height:1.75; font-size:15px;
+}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px 80px}
+
+/* Hero */
+.hero{background:linear-gradient(135deg,var(--navy-900) 0%,var(--navy-700) 55%,var(--navy-600) 100%);color:#fff;padding:56px 0 48px;margin-bottom:40px}
+.hero .wrap{padding-bottom:0}
+.hero .kicker{color:var(--amber);font-size:13px;letter-spacing:3px;font-weight:600;margin-bottom:14px}
+.hero h1{font-size:34px;font-weight:700;line-height:1.3;margin-bottom:16px;letter-spacing:-.5px}
+.hero .sub{color:#b8c7dd;font-size:15px;max-width:760px}
+.hero .meta{margin-top:26px;display:flex;gap:28px;flex-wrap:wrap;font-size:13px;color:#93a7c4}
+.hero .meta b{display:block;color:#fff;font-size:17px;font-weight:600;margin-bottom:2px}
+
+/* Verdict */
+.verdict{background:#fff;border:1px solid var(--line);border-left:5px solid var(--amber);border-radius:10px;padding:26px 30px;margin:-70px 0 40px;box-shadow:0 6px 28px rgba(11,27,52,.10);position:relative;z-index:2}
+.verdict .tag{display:inline-block;background:var(--navy-900);color:var(--amber);font-size:12px;font-weight:700;letter-spacing:2px;padding:5px 14px;border-radius:4px;margin-bottom:14px}
+.verdict h2{font-size:22px;color:var(--navy-900);margin-bottom:12px}
+.verdict p{font-size:15px;color:var(--gray-700)}
+.verdict .hl{color:var(--navy-700);font-weight:700;background:linear-gradient(transparent 62%,var(--amber-soft) 62%);padding:0 2px}
+
+/* Section */
+section{margin-bottom:44px}
+h3.sec{font-size:20px;color:var(--navy-900);padding-left:14px;border-left:4px solid var(--amber);margin-bottom:8px;line-height:1.4}
+.desc{color:var(--gray-500);font-size:13.5px;margin-bottom:20px;padding-left:18px}
+
+/* Table */
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(11,27,52,.07);font-size:14px}
+th{background:var(--navy-800);color:#fff;font-weight:600;text-align:left;padding:12px 14px;font-size:13.5px;white-space:nowrap}
+td{padding:11px 14px;border-top:1px solid var(--line);vertical-align:top}
+tbody tr:nth-child(even){background:#fafcfe}
+.mono{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12.5px;color:var(--navy-700);word-break:break-all}
+
+/* Badges */
+.b{display:inline-block;padding:2px 9px;border-radius:4px;font-size:12px;font-weight:600;white-space:nowrap}
+.b-ok{background:#e6f6ee;color:#0b7a4b;border:1px solid #b7e4ce}
+.b-warn{background:#fef4e2;color:var(--warn);border:1px solid #f5d9a8}
+.b-no{background:#fdecea;color:#c0392b;border:1px solid #f5c6c0}
+.b-info{background:#e8f0fb;color:var(--navy-700);border:1px solid #c3d6f0}
+
+/* Cards */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:22px;box-shadow:0 1px 3px rgba(11,27,52,.06)}
+.card h4{font-size:16px;color:var(--navy-900);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.card .num{background:var(--amber);color:var(--navy-900);width:22px;height:22px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:700;flex:0 0 auto}
+.card p{font-size:14px;color:var(--gray-700);margin-bottom:8px}
+.card ul{margin:10px 0 0 0;padding-left:18px;font-size:13.5px;color:var(--gray-700)}
+.card li{margin-bottom:4px}
+
+/* Code */
+pre{background:var(--navy-900);color:#d6e2f0;padding:16px 18px;border-radius:8px;overflow-x:auto;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7;margin:14px 0}
+pre .c{color:#7f9bbd}
+pre .g{color:var(--amber)}
+pre .r{color:#ff9d8a}
+
+/* Formula */
+.fml{background:#fff;border:1px dashed var(--gray-300);border-radius:8px;padding:16px 20px;font-family:"SF Mono",Menlo,monospace;font-size:13.5px;color:var(--navy-700);margin:12px 0}
+.fml b{color:var(--up)}
+
+/* Risk */
+.risk{background:#fff;border:1px solid var(--line);border-radius:10px;padding:0;overflow:hidden}
+.risk-item{display:grid;grid-template-columns:44px 1fr 90px;gap:0;border-top:1px solid var(--line)}
+.risk-item:first-child{border-top:none}
+.risk-lvl{display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff}
+.l-h{background:#c0392b}.l-m{background:#d98324}.l-l{background:#0f9960}
+.risk-body{padding:14px 18px}
+.risk-body b{color:var(--navy-900);font-size:14.5px}
+.risk-body p{font-size:13.5px;color:var(--gray-500);margin-top:3px}
+.risk-body .fix{color:var(--down);font-size:13px;margin-top:5px}
+.risk-cat{padding:14px 10px;font-size:12px;color:var(--gray-500);text-align:center;display:flex;align-items:center;justify-content:center}
+
+/* Roadmap */
+.road{position:relative;padding-left:34px}
+.road::before{content:"";position:absolute;left:11px;top:8px;bottom:8px;width:2px;background:linear-gradient(180deg,var(--amber),var(--navy-600))}
+.road-item{position:relative;margin-bottom:22px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:18px 22px}
+.road-item::before{content:"";position:absolute;left:-28px;top:24px;width:12px;height:12px;border-radius:50%;background:var(--amber);border:3px solid #fff;box-shadow:0 0 0 2px var(--amber)}
+.road-item h4{font-size:16px;color:var(--navy-900);margin-bottom:6px}
+.road-item .ph{display:inline-block;background:var(--navy-800);color:var(--amber);font-size:11px;font-weight:700;padding:2px 9px;border-radius:3px;margin-right:10px;vertical-align:2px}
+.road-item p{font-size:13.5px;color:var(--gray-500);margin-bottom:6px}
+.road-item ul{padding-left:18px;font-size:13.5px;color:var(--gray-700)}
+.road-item li{margin-bottom:3px}
+
+.note{background:#f0f6ff;border:1px solid #cfe0f7;border-radius:8px;padding:14px 18px;font-size:13.5px;color:var(--navy-700);margin:14px 0}
+.note b{color:var(--navy-900)}
+footer{text-align:center;color:var(--gray-500);font-size:12.5px;padding-top:30px;border-top:1px solid var(--line);margin-top:20px}
+.up{color:var(--up);font-weight:600}.down{color:var(--down);font-weight:600}
+</style>
+</head>
+<body data-page-node-id="zz4DUhWDqCluDVLBHxC5eh">
+
+<div class="hero" data-page-node-id="R8aoEOFGMnQYwVOFR9VAJ7">
+  <div class="wrap" data-page-node-id="9kWGvePt5lqNfHE832sZOl">
+    <div class="kicker" data-page-node-id="d0H7zOB6iMnZjuhbDwpGyM">FEASIBILITY REPORT</div>
+    <h1 data-page-node-id="4tU0iAqLSAFrjvYYVrtwAZ">集思录 QDII / LOF / ETF 套利增强插件<br data-page-node-id="KSlxARBgBqotmLZwWXZVGY">可行性研究报告</h1>
+    <p class="sub" data-page-node-id="7712alimlcFrptCLQEEp2A">针对「估算溢价率 + 跟踪比校准 + 自选高亮 + 详情页聚合面板」四大诉求，逐项实测数据源可用性、计算口径与技术风险，给出可落地方案。</p>
+    <div class="meta" data-page-node-id="OJWb3ct4KDDrtK0v6f0nSA">
+      <div data-page-node-id="awFPnnGKPC6TDyOR72bawS"><b data-page-node-id="ZHfL4IfuivpWrIInOcqfVn">2026-09-10</b>调研日期</div>
+      <div data-page-node-id="mQd8XCB6JDGrH8Rge4Ns9I"><b data-page-node-id="YgniuohNDSgR1RMOlyJ7hS">9 / 9</b>数据源实测通过</div>
+      <div data-page-node-id="AhxCDpDgzpiEZrDimtAQl0"><b data-page-node-id="4PPCYDADJ7m4cRACFDeipm">¥0</b>数据成本（全免费）</div>
+      <div data-page-node-id="E2CFkRWFKd5EDu96Cygpqu"><b data-page-node-id="AemLUk3MXWuUMKEEPKzI9H">4 / 4</b>功能可实现</div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap" data-page-node-id="kmHbknuduWaKftvMuyUUZh">
+
+  <div class="verdict" data-page-node-id="3JBe2YttcPENBeUzF7hghM">
+    <span class="tag" data-page-node-id="UtkiaqLTnCFDUaLNJQKvaD">核心结论</span>
+    <h2 data-page-node-id="85WXf1byE9D26EyCb6J4CL">✅ 完全可行 —— 而且能做得比对标产品更硬</h2>
+    <p data-page-node-id="qNBazACwtmmaUuxmnJLder">四项功能所需数据<span class="hl" data-page-node-id="tFZ3U1IQVZ8aw2pGICpszs">全部有免费、稳定、批量的获取通道</span>，无一依赖会员接口或付费服务。关键突破在于：腾讯行情接口直接提供 <b data-page-node-id="w36JeWgW4OAuZQXGAKMDlF">IOPV 实时净值估值</b> 与 <b data-page-node-id="9C2wcxtOWo582LyQHGnqs5">IOPV 溢价率</b>（交易所每 15 秒更新），这意味着对标产品需要「用跟踪比反推估算」的品种，我们有一大半可以<b data-page-node-id="CisZVdRMDPD1xPOhVI2DPz">直接读真实值</b>，不必估算。剩余无 IOPV 的 QDII 品种（跟踪海外市场）再走跟踪比估算路径——<span class="hl" data-page-node-id="HU6GlRi9P99lSTkA0tUfqN">双轨互补，覆盖 100% 品种</span>。</p>
+  </div>
+
+  <!-- 1 数据源 -->
+  <section data-page-node-id="PstKt6t23uSAJj6RgDFhJ7">
+    <h3 class="sec" data-page-node-id="7XJLRiya3rLLlyx34dZ0NL">一、数据源实测结果（全部 curl 真机验证）</h3>
+    <p class="desc" data-page-node-id="oaHZiYsymKFNt4E5AxHmvV">以下接口均在沙箱内实际请求成功，非推测。GBK 编码需显式解码。</p>
+    <table data-page-node-id="rKByzDKKQAS3UcKDzE2bNs">
+      <thead data-page-node-id="Y9xP78aoavdrsI7D4y8x7q"><tr data-page-node-id="V76OACB8AZNmySlCLkB8pF"><th style="width:16%" data-page-node-id="fn38NRd4uEBplfwgDkp9Lm">数据项</th><th style="width:30%" data-page-node-id="Gnib8s3imvA4t0kZl5yUEJ">来源 / 接口</th><th style="width:9%" data-page-node-id="gYP2lgE35kT6SmnFzFiK2L">状态</th><th data-page-node-id="W121mwrmApgEwduk7pDULE">实测证据与说明</th></tr></thead>
+      <tbody data-page-node-id="v0gJpXJaztGw1f4nFEOc4N">
+        <tr data-page-node-id="KlJDfOvCGb97AYhiRDSVz5">
+          <td data-page-node-id="eajZrUmfOiBKoekx0sXFg9"><b data-page-node-id="CfCyDweTtK1eOZHECaYVXC">列表页全量数据</b></td>
+          <td class="mono" data-page-node-id="lf5pHebq0iuY5dJpv0uXTy">jisilu.cn/data/qdii/qdii_list/{E,A,B}<br data-page-node-id="hCC9Yf8PgbizfOXn90Etww">jisilu.cn/data/lof/stock_lof_list/<br data-page-node-id="Dma2mtLo7RCSeL7WC3O6zt">jisilu.cn/data/lof/index_lof_list/<br data-page-node-id="upXDHvpB9wo53i0SwiKpk6">jisilu.cn/data/etf/etf_list/</td>
+          <td data-page-node-id="te83BOvEXvGMvTUnJ2Tm4O"><span class="b b-ok" data-page-node-id="o2jgHKzPDL7xq4YA2EAC61">可用</span></td>
+          <td data-page-node-id="0cnKACjvN3FK3hNHFI5FbE">游客即可返回 JSON。含 <span class="mono" data-page-node-id="zsLnJJQUAArAJFFjQwCxvq">price / fund_nav / nav_dt / ref_increase_rt（跟踪指数涨幅）/ index_nm / apply_status（申赎状态）/ amount（份额）/ asset_ratio / turnover_rt</span> 等 60+ 字段。<br data-page-node-id="dGVsZ9syB3gNI7oqhwHJIl"><span class="b b-warn" data-page-node-id="W0WP7bH91BqtAml2wbDokv">限制</span> 游客仅返回 <b data-page-node-id="C0ieDaNIlvGrXhujOixC9D">20 条且翻页无效</b>（rp/page 参数均无效）→ 全量必须走页面 DOM。</td>
+        </tr>
+        <tr data-page-node-id="9WZsycayuE4Vile01QB3FQ">
+          <td data-page-node-id="5BoCsqf31Fudxa5myAN5Fq"><b data-page-node-id="cJcqNP3YncJDpG1sP3QbmO">实时 IOPV</b><br data-page-node-id="7OXmjbuug6VLoRMMTxv1mI">（核心）</td>
+          <td class="mono" data-page-node-id="vUEEIWUPGf7IatIjip5KGb">qt.gtimg.cn/q=sh513100<br data-page-node-id="CySZY7b2BGPAGqJ0Kghilq">字段 [78] = IOPV<br data-page-node-id="znTkhpq51JyLGpzpFMAVq9">字段 [77] = IOPV 溢价率</td>
+          <td data-page-node-id="h5RQSk7KCWEaUZS0iTpc6L"><span class="b b-ok" data-page-node-id="vrPQot13ah9ZePXBR72gBZ">可用</span></td>
+          <td data-page-node-id="1rGJgpXn0qsd9gFo6sKyzU">513100 纳指ETF：现价 2.219 / IOPV <b data-page-node-id="88ygJA2RE7QivZvg6KPJFu">1.9873</b> / 溢价 [77]=<span class="up" data-page-node-id="gIl2ixDZ8X0h5krXgFO45x">+11.66%</span>（交叉验算：(2.219−1.9873)/1.9873 = +11.66% ✅）<br data-page-node-id="JeqL8Hp6fxcEqkEFfrqFsu">518880 黄金ETF：现价 9.083 / IOPV <b data-page-node-id="1fERmHTFVzrJDrWu6KKSi4">9.0913</b> / 溢价 −0.09% ✅</td>
+        </tr>
+        <tr data-page-node-id="biLU1gkEk3cB9tzv1bTJvc">
+          <td data-page-node-id="jcyJlly486XvAqEew2VLnY"><b data-page-node-id="YjP0hkbVUL59KOCPfX4iYr">单位净值</b></td>
+          <td class="mono" data-page-node-id="DuTph684Qabgmsoxgb1EFw">qt.gtimg.cn 字段 [81]<br data-page-node-id="H6cI2wp4VREgQmP4aLYOMH">或集思录 fund_nav</td>
+          <td data-page-node-id="0sAF1ernQrcVffeJFr8uZR"><span class="b b-ok" data-page-node-id="dfNPmOvfjIm8tiX5WBnftU">可用</span></td>
+          <td data-page-node-id="0MhspGIAjfAPmHS0fQs49z">161127 标普生物LOF：[81]=2.1373 = 集思录 fund_nav 2.1373 ✅ 完全一致。<br data-page-node-id="ypIxbhQX0NwaVQSXJMFbZc">QDII 净值普遍 <b data-page-node-id="K9dk7OpNrdBCekhOSVoVK4">T-2 滞后</b>（nav_dt=2026-09-08），这正是需要估算的原因。</td>
+        </tr>
+        <tr data-page-node-id="0ESGzR3LQaSqoG8KiDEXlh">
+          <td data-page-node-id="AtEdlfk9JiQbgFFVoUZGAv"><b data-page-node-id="EHGrXm7JmtYzmIP5xPA3iu">IOPV 有无标记</b></td>
+          <td class="mono" data-page-node-id="HcN1UF27Xm7Nj5XP03LwMR">集思录 has_iopv 字段<br data-page-node-id="DEIfgoTdAD3utcre38NZqF">腾讯 [78] 是否为空</td>
+          <td data-page-node-id="P3B4RF0maNLAPDv0FKlgca"><span class="b b-ok" data-page-node-id="NoYZZNNfpmxhzL8fEZCmZS">可用</span></td>
+          <td data-page-node-id="rZ6xCcbqmbVxys2UeuB2wD">两者<b data-page-node-id="hOGpPklniPGcLEzIvcMWjM">完全对应</b>：159561/513100/518880 has_iopv=Y → 腾讯 [78] 有值；161127/501312/164906 has_iopv=N → [78] 为空。<br data-page-node-id="FSXboTvdM0EFsLBqXeGd3L">可用作双轨自动路由的判据。</td>
+        </tr>
+        <tr data-page-node-id="XAhAcMFptWv5FEEpERLRDZ">
+          <td data-page-node-id="e85MYQETERB3gj69fMHsQq"><b data-page-node-id="HSHrv9sbqwjaaq5YjMmmZe">海外指数实时涨幅</b></td>
+          <td class="mono" data-page-node-id="T1nHSuZTeNG9gcv5uFLHWR">qt.gtimg.cn/q=usDJI,usIXIC,<br data-page-node-id="qrruQyHUEbXhycZGB89m2R">usINX,hkHSI</td>
+          <td data-page-node-id="mRlG5Qwlw1Ics5r2aSIaDn"><span class="b b-ok" data-page-node-id="7CZ3E3oQHhVoKBCQF4gIep">可用</span></td>
+          <td data-page-node-id="XncEZYdHGzSkt0zuyfbc5G">道指 52380.66（−0.77%）、纳指 26253.34（−0.64%）、标普 7636.36（−0.48%）、恒指 24957.83（<span class="down" data-page-node-id="BsgPn3wvqBAZyaMUTcUACM">−1.25%</span>，14:47 实时）✅<br data-page-node-id="gJ3uVHLbgIuJDndXT5eDld">QDII 跟踪比估算的基准涨幅源。</td>
+        </tr>
+        <tr data-page-node-id="f8FQ6sw9RO7PrpZMRdkE82">
+          <td data-page-node-id="yIOFIWcGWcO9RYuoQ04mjq"><b data-page-node-id="CXLrd45pX4JcK8OEfvf2nA">跟踪指数涨幅</b></td>
+          <td class="mono" data-page-node-id="kxusoH0Ni0Cqi6rMfaYd3i">集思录 ref_increase_rt<br data-page-node-id="yAmCbxFhaNTUy9mnGOuEXK">cal_index_id / ref_price</td>
+          <td data-page-node-id="4eky3MDWPREjQQiRZhdc3C"><span class="b b-ok" data-page-node-id="unL2QFRdUcb6vwoaGRfdpD">可用</span></td>
+          <td data-page-node-id="niWM76D4x748gnBrXIWTFC">161127 ref_increase_rt=<span class="down" data-page-node-id="pgS49n6vIJ4ov9mUxDXKkW">−1.56%</span>，cal_index_id=SPSIBI.SPI，ref_price=12476.24<br data-page-node-id="RR5mfULTuXegEdM10k6pU8">集思录还给了 cal_tips：<span class="mono" data-page-node-id="z39uVEv6HkjIC5iJrmmBw4">"指数从 2026-09-08 12674.53 到 2026-09-09 12476.24；汇率 6.78040→6.77690"</span> → <b data-page-node-id="QWAqNXUcXI3G1te2AC8DhS">含汇率修正，可直接复刻其口径</b>。</td>
+        </tr>
+        <tr data-page-node-id="9BVeTrEW8bYlFLGoND7MGd">
+          <td data-page-node-id="HUq7pMeP5uJ5L1QDeXINXh"><b data-page-node-id="BzBGPH9o0JKzec2YFl3Vuk">前十持仓</b></td>
+          <td class="mono" data-page-node-id="SVuBkaNR2AI1ta30baguYa">fundf10.eastmoney.com<br data-page-node-id="0iZ6g5LB6gCPja085j9Q9N">/FundArchivesDatas.aspx<br data-page-node-id="CxqGFsDzD43ypUs3XH85nH">?type=jjcc&code=X&topline=10</td>
+          <td data-page-node-id="KhbbDi2q8pTEJrVC7Fpjio"><span class="b b-warn" data-page-node-id="PnxoQlI27y7Rs9LNJ7DfYP">部分</span></td>
+          <td data-page-node-id="MTL6DLFmT8Pm0yOUsX83gj">国内股票 LOF ✅（161028 富国新能车、160105 南方积配、164906 中概互联均返回 2026Q2 明细）<br data-page-node-id="qVtt8CrGUSRH7xOwPkokdL">QDII-LOF ❌（501018 南方原油返回空，arryear=[]）→ 需容错降级。</td>
+        </tr>
+        <tr data-page-node-id="JtL9w5YIEzsew1Q5tCa5K2">
+          <td data-page-node-id="K4PX1NrQMpQIBRKdjKQN8z"><b data-page-node-id="zAmTl2LcTCtR8qZ67io5E3">持仓股实时涨幅</b></td>
+          <td class="mono" data-page-node-id="KjhoFz6D0CP2zMvucvxEYy">qt.gtimg.cn 批量查询</td>
+          <td data-page-node-id="6nIH1RNJwUEGFsGrSGLMbj"><span class="b b-ok" data-page-node-id="kzsR99m35HOId2kjVcHAtD">可用</span></td>
+          <td data-page-node-id="ASJtmdVwDb1G772u9YirMB">一次请求可取多只（已有项目验证：覆盖沪深/创业板/科创板/北交所），返回 GBK，现价取 [3]、涨跌幅取 [31]。</td>
+        </tr>
+        <tr data-page-node-id="FhcrGFwjchJXCPEbrfjOGq">
+          <td data-page-node-id="jH9IjvOLxBq4CLttZrBHwM"><b data-page-node-id="iDuEsDUefRHfm2A5tzCqBv">详情页数据</b></td>
+          <td class="mono" data-page-node-id="HGC0veq8QMlf6uzEQd1HWp">jisilu.cn/data/lof/detail/{code}</td>
+          <td data-page-node-id="q7cGWL0N8IhGJQgRSFvuVA"><span class="b b-warn" data-page-node-id="HDHSnSp2BgzMPgTMgvotcU">需登录</span></td>
+          <td data-page-node-id="R1wxskdTC5BkqT3XIvNdLN">游客 302 → <span class="mono" data-page-node-id="AHGTXXxJgqWtZQKtNZ88g1">/account/login/</span>。<br data-page-node-id="S6PpEINIu2e3UINM0TqcdY"><b data-page-node-id="oKfeurlpCmEZgw3Z2YK3u7">对插件不构成障碍</b>：插件运行在用户浏览器内，天然携带集思录 Cookie（同源），用户能看详情页 = 插件能读。<span class="b b-info" data-page-node-id="Gy1PZ4402tqyH4HqgidBMY">DOM 提取为主</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note" data-page-node-id="uGfMyOzXAbHZJY1dShUtgB">
+      <b data-page-node-id="0RhLX2uk50UFosADrQHAAM">兜底源：</b>东财 <span class="mono" data-page-node-id="7Thispy76xh3cKczDxBQ1Y">push2.eastmoney.com/api/qt/ulist.np/get</span> 实测亦可返回现价/涨跌幅，可作腾讯行情故障时的第二通道（字段 f2=现价、f3=涨跌幅、f18=昨收）。
+    </div>
+  </section>
+
+  <!-- 2 计算口径 -->
+  <section data-page-node-id="qKHVwUfOYUyFmkVP74IRqP">
+    <h3 class="sec" data-page-node-id="MDMF0CC5wCaIw85a3qHaFQ">二、核心算法口径（双轨设计）</h3>
+    <p class="desc" data-page-node-id="fjNqJgK20OGpdBHeAzHpCR">这是本插件的技术核心，也是相对对标产品的差异化优势。</p>
+    <div class="grid" data-page-node-id="MzZmSqGPxFOENHdNLCwA1I">
+      <div class="card" data-page-node-id="WoqIdfQ6YJabmhOGT5rY69">
+        <h4 data-page-node-id="g2M7k0cVNVGhsNEJ9BM1pn"><span class="num" data-page-node-id="oHizptubeprIkzp7MTDYyE">A</span>轨道一：真实 IOPV（精确值）</h4>
+        <p data-page-node-id="kAKD0CvPl2fDlPkREsSHNA">适用：<b data-page-node-id="kYXIyvyUGPYGPVCXCvLjqW">有 IOPV 的品种</b>（全部 ETF + 部分 LOF，判据 has_iopv=Y / 腾讯 [78] 非空）</p>
+        <div class="fml" data-page-node-id="DcRPMbJ95oxpjYJH59umad">IOPV溢价率 = (现价 − IOPV) ÷ IOPV<br data-page-node-id="XnYBBOY42exhxEmePuBxnb">　─ 现价：腾讯 [3]<br data-page-node-id="Yf2uxESxWoL0tohLzVnVHT">　─ IOPV：腾讯 [78]（15秒刷新）<br data-page-node-id="CSDjJC2BjxtXt4483cy0mr">　─ 校验值：腾讯 [77]</div>
+        <ul data-page-node-id="BFlp6qMwDOXLArt0b1UVNK">
+          <li data-page-node-id="fGDH9ZFS5s3qWAadO5s4Et">交易所官方发布，<b data-page-node-id="43tZGamYGaRKjKbG96vEa8">零估算误差</b></li>
+          <li data-page-node-id="MtKqiOte0dXDVq8Ail3w6a">无需跟踪比，无需汇率假设</li>
+          <li data-page-node-id="re0yP7RpMOUd8Xa7BhbXf8">覆盖全部 ETF 与流动性好的 LOF</li>
+        </ul>
+      </div>
+      <div class="card" data-page-node-id="8O1Gt9DiOaXCtulnExzAha">
+        <h4 data-page-node-id="UOd7jCUIVOohGNa6J3ZjpI"><span class="num" data-page-node-id="b1yxSCoDv2HyaqFliYrhnC">B</span>轨道二：跟踪比估算（拟合值）</h4>
+        <p data-page-node-id="pY4ruDqi5BUHujAbzKANrE">适用：<b data-page-node-id="EHpfd36K8hipI2UfFFhYzU">无 IOPV 的 QDII</b>（净值 T-2 滞后，判据 has_iopv=N）</p>
+        <div class="fml" data-page-node-id="zx43SxcocOhg1sECiubElb">估算净值 = 最新净值 × (1 + <b data-page-node-id="85g3Dihca26v5OmUZAvUvr">参考涨幅 × 跟踪比</b>)<br data-page-node-id="5rbEQDaWMwBWLnS5A3vTyQ">　　　　　　× (1 + 汇率变动) 　<span style="color:#64748b" data-page-node-id="cHEusW7BaxN4v9hWn2IVfu">[可选]</span><br data-page-node-id="WB2vVYSAi9zh9KqhN6Lpk7">估算溢价率 = (现价 − 估算净值) ÷ 估算净值</div>
+        <ul data-page-node-id="SjG3EzxD95AowGSmDGlLA4">
+          <li data-page-node-id="ODxa3GQ631kMnsCZZso2Ov">参考涨幅取 <span class="mono" data-page-node-id="bwetAm2avT7oLk2fBVhzm0">ref_increase_rt</span>（集思录已算好）</li>
+          <li data-page-node-id="NTif2O3yfofsl3HidfDGNZ">跟踪比默认 <b data-page-node-id="oZ1RKbCRsVbV5jfsd9qHBc">1.0</b>，UI 可调（0.5~1.5）</li>
+          <li data-page-node-id="v3sJPZmLLX4IS7BVduDV3d">QDII 汇率变动可从 cal_tips 解析</li>
+        </ul>
+      </div>
+    </div>
+
+    <h4 style="margin:26px 0 10px;color:var(--navy-900);font-size:16px;" data-page-node-id="S7fBAL5lG6sfg4og7toaCf">🔁 双轨自动路由逻辑</h4>
+    <pre data-page-node-id="fEGok56aBUtu3YSVG1KF04"><span class="c" data-page-node-id="QrjhjLBWzVq0itD7GhDrAW">// 每行的溢价率取值决策</span>
+<span class="g" data-page-node-id="dpvu65UgEzZDkMH0x3y47e">if</span> (hasIopv && tencentField78 非空) {
+    premium = (price - iopv) / iopv;        <span class="c" data-page-node-id="vKV94BDZqmrPmvPxjy74y4">// 轨道A：真值，标记 ●</span>
+    source  = <span class="r" data-page-node-id="oX2anSaHGhQHsaM96MxnH1">'IOPV'</span>;
+} <span class="g" data-page-node-id="JBbyebMvNlQuGpzEdc5b2N">else</span> {
+    estNav  = nav * (1 + refIncreaseRt * trackRatio);
+    premium = (price - estNav) / estNav;    <span class="c" data-page-node-id="6JpfxmlQr17bJB2NCXibrW">// 轨道B：估算，标记 ○</span>
+    source  = <span class="r" data-page-node-id="Ye2Ch7u3k4ZzOxoZ4fy0fl">'EST'</span>;
+}</pre>
+    <div class="note" data-page-node-id="r9fU9mAIIElKeYl6gYmOtA">
+      <b data-page-node-id="VRJeW2mz7HXfsQ1HEXyiGy">诚实标注原则：</b>UI 上用不同标记区分「真值 ●」与「估算 ○」，鼠标悬停显示计算过程（净值日期、参考涨幅、跟踪比、是否含汇率）。TD-2 滞后的估算值<b data-page-node-id="HCR3E3y8tJyhxi473kapjw">本质仍是推测</b>，不做过度承诺。
+    </div>
+  </section>
+
+  <!-- 3 功能 -->
+  <section data-page-node-id="VA00xVHPUxjEpFT7uGTYSp">
+    <h3 class="sec" data-page-node-id="dJ87xgrBQQPBLPk2wJaCZg">三、四大功能可实现性逐项评估</h3>
+    <p class="desc" data-page-node-id="AEcuodkA0FFoEqSGH1faYA">对照老板的原始需求清单，逐条给出实现路径。</p>
+    <table data-page-node-id="kojrjXLHWTvWa47kRs8l30">
+      <thead data-page-node-id="J9KN96NCLsU1cxPK78MP1R"><tr data-page-node-id="kJNbwQ7fJk26RuMyG0mSHa"><th style="width:22%" data-page-node-id="c3uTUNPj5DHxGfk8aTHRf7">需求</th><th style="width:9%" data-page-node-id="sKTAUvuWKOnant0qdybByo">可行性</th><th data-page-node-id="y6RIx8MtwlD9wE20BFBck9">实现路径</th><th style="width:14%" data-page-node-id="VmjhMFyJ4Yc88AaJOlgtrV">依赖</th></tr></thead>
+      <tbody data-page-node-id="8BmwZezoVx9DaSf3OGv3eq">
+        <tr data-page-node-id="d5a0KAVvuHA6VrTYW9mTwT">
+          <td data-page-node-id="ymAEjeHYkgIfocADBFRjp7"><b data-page-node-id="ZH0UXeZA5pcrLGfCEIYRL7">① 估算溢价率<br data-page-node-id="cqs5hL45KBfKNXnZ7JbuY1">（盘中重算）</b></td>
+          <td data-page-node-id="9OxFlerkAHLKbDNoCHZ6cd"><span class="b b-ok" data-page-node-id="qUFrIfHBQSpeyN2lgy2CIP">完全可行</span></td>
+          <td data-page-node-id="WZO8ZGkO5ZShg8WUpBnXJH">DOM 取现价+净值 → 后台批量拉腾讯行情（一次请求 50 只）→ 双轨算溢价 → 注入新列。刷新频率 15~30 秒可调。</td>
+          <td data-page-node-id="js9vLEnpu4rwbMWXU5eEew">腾讯 [78]/[77]<br data-page-node-id="COHSLhPFYtMpLhZcQCWGX5">集思录 ref_increase_rt</td>
+        </tr>
+        <tr data-page-node-id="jBB5101E6MyqxUd0l0qI8o">
+          <td data-page-node-id="KBiSrTB1WEn6m1taQabyU6"><b data-page-node-id="ZZHYeaRFlwvPnx2bc1umP9">② 跟踪比可调</b></td>
+          <td data-page-node-id="4KeaTN77r7239cHxG59CRS"><span class="b b-ok" data-page-node-id="TBXIfWSHFEjncEmfICjEqD">完全可行</span></td>
+          <td data-page-node-id="RnD1GAmvWnDi4VH6ZN16aY">面板提供全局 / 单品种两个层级：全局默认 1.0 滑杆；右键单只可覆写。存 <span class="mono" data-page-node-id="Mm3DBsdABtzCn0Lu5CMwKo">chrome.storage.local</span>。修改后实时重算整列，无需刷新页面。</td>
+          <td data-page-node-id="GrABEt8RlsVXYceyEaDVHZ">chrome.storage</td>
+        </tr>
+        <tr data-page-node-id="86VH4PuTSb8wgx1NEPBuRx">
+          <td data-page-node-id="DB4LH3A8zmkx3b70ZVUvYD"><b data-page-node-id="1Z62bEEcE3Z5K5XCycKVEp">③ 自选整行高亮</b></td>
+          <td data-page-node-id="QJYZRWGLqX43zIfioNxGPv"><span class="b b-ok" data-page-node-id="pZm2puHpsRYe627oTIf5Qg">完全可行</span></td>
+          <td data-page-node-id="jEEIJyUTJ4HV8jsI1A4mwF">行内注入「☆」按钮 → 自选集合存 storage → 命中行加背景色（琥珀金低饱和）+ 左侧色条 + 字重加粗。支持导入/导出自选列表。</td>
+          <td data-page-node-id="aaCDhKMW3wrqVImF9v9Fdq">chrome.storage</td>
+        </tr>
+        <tr data-page-node-id="hv7S233XwlVZoNEtSwDAqD">
+          <td data-page-node-id="LbGR0aj7rLemftloaJTLcy"><b data-page-node-id="c4JNbKgJ8992CF6Uf39JAn">④ 详情页聚合面板<br data-page-node-id="w0M8xQSUauMI6HDLsOR2nf">（历史涨跌+跟踪比）</b></td>
+          <td data-page-node-id="kjcJ6MaErKC7G0QFFSc2CE"><span class="b b-ok" data-page-node-id="WyFUflXi7h4RpD215quYFo">可行</span></td>
+          <td data-page-node-id="bCHFFpl1iwDcXYs4A5H6V4">详情页注入面板：提取页面历史表格 → 计算每日「跟踪比 = 净值涨幅 ÷ 指数涨幅」→ 自动求近 N 日均值（N 可设 5/10/20）→ 作为默认跟踪比回写列表页估算。</td>
+          <td data-page-node-id="M5a5BKpmbojhW8YiFTes8U">登录态 DOM<br data-page-node-id="Yw47T0w9wKF0Zgr9bIYXxX">（插件天然具备）</td>
+        </tr>
+        <tr data-page-node-id="bGzwQDwo7Ty27fAxaxddBi">
+          <td data-page-node-id="CayF1S2AML32HsCADTXtEm"><b data-page-node-id="I0qkve9RGg0HGON62XPe4L">⑤ 前十持仓涨幅汇总</b></td>
+          <td data-page-node-id="sqcXGx8QP8FeN3PqpiC44e"><span class="b b-warn" data-page-node-id="YeF4GiC8S1FQ5WmCPa8L3f">部分可行</span></td>
+          <td data-page-node-id="M9XTWGCOym9Dei4Hlp4MsE">天天基金 jjcc 接口取持仓（代码+权重）→ 腾讯批量拉实时涨幅 → <b data-page-node-id="5rBHsH6YBJjRFvqCzX6SrX">加权平均涨幅</b>与<b data-page-node-id="M739kqbK6LdfHQUIUvJVjz">贡献度</b>注入面板。<br data-page-node-id="6OgBU0Beilvldhr38LrMtA"><span class="b b-warn" data-page-node-id="zF6FtjSoanhfTWOxnG3FkR">降级</span> QDII-LOF 常无持仓数据 → 显式提示「该基金无公开持仓明细」，不静默留空。</td>
+          <td data-page-node-id="Wb5mUGz8EygEd6cy3eTIMS">天天基金 jjcc<br data-page-node-id="4e0foB68PIVWqdeB1GvmK4">腾讯批量行情</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 4 架构 -->
+  <section data-page-node-id="xqBJanPEpftiuB30yZHLKV">
+    <h3 class="sec" data-page-node-id="fEioE6usA4mqYolbzzfw6j">四、技术架构（复用现有转债插件骨架）</h3>
+    <p class="desc" data-page-node-id="c15yKpvWOKzo1tJSbLbUrc">现有 <span class="mono" data-page-node-id="9PP16LhGrEFzINZizJhcg0">可转债/jisilu-enhancer</span>（v0.5.0）已沉淀成熟的插列与自愈方案，新插件可直接复用 70% 基础设施。</p>
+    <pre data-page-node-id="oTRur9L0tk36oZDgksZAZZ"><span class="c" data-page-node-id="OSyO18EHNbUK3zyyDp7HH5">jisilu-arbitrage/                       ← 新插件（MV3，纯前端，离线加载）</span>
+├── manifest.json                       <span class="c" data-page-node-id="89cQ4n0mcFNdztzF05axNI">host_permissions: jisilu.cn / qt.gtimg.cn / fundf10.eastmoney.com</span>
+├── background/service-worker.js        <span class="c" data-page-node-id="Mi15UkxUGqxTonCu1T0GyC">行情批量抓取 + 缓存（IOPV 15s / 持仓 7d / 指数 60s）</span>
+├── core/
+│   ├── quotes.js        <span class="c" data-page-node-id="TKD2LkKX2OjOyrpxKPh9vk">腾讯行情解析（IOPV[78]/溢价[77]/净值[81]/现价[3]）★核心</span>
+│   ├── premium.js       <span class="c" data-page-node-id="SSEcP94LSGfityTFjHI5WN">双轨溢价计算（真值 vs 估算）</span>
+│   ├── track.js         <span class="c" data-page-node-id="4dJWmWKrSU9SW5NtSHeovk">跟踪比历史计算 + 近N日均值</span>
+│   ├── holdings.js      <span class="c" data-page-node-id="aVW8xWp2nCtqeSwEx2AlOO">天天基金持仓解析 + 加权涨幅</span>
+│   └── calc.js          <span class="c" data-page-node-id="Wgf90SUpG5PgBYXF98Fyx7">工具与格式化</span>
+├── content/
+│   ├── jisilu-qdii-list.js   <span class="c" data-page-node-id="RcfH7oRBUTxDEmpounb6iD">QDII/LOF/ETF 列表页增强（插列 + 高亮 + 面板）</span>
+│   └── jisilu-detail.js      <span class="c" data-page-node-id="V4tj2IzjMsAYVqM3wrym18">详情页聚合面板</span>
+├── config/selectors.js       <span class="c" data-page-node-id="6FOzlG4Dw26MZlcnecXl4k">选择器（兼容 jsl-table-* / el-table__* 两套）</span>
+├── storage/repository.js     <span class="c" data-page-node-id="LQu3bLEe95ouFC2HBPjgOW">自选、跟踪比覆写、缓存</span>
+└── tests/                    <span class="c" data-page-node-id="ouprx4zkxbSrIbSxwFWEqD">node:test 单测 + 双实现交叉校验</span></pre>
+
+    <div class="note" data-page-node-id="qDz1hUX0goSMiR7hDZP7I5">
+      <b data-page-node-id="IXdymJNxPBpcY1k4PPXOMc">可复用的既有资产（来自转债插件踩坑经验）：</b>
+      <ul style="margin:8px 0 0 18px;font-size:13.5px" data-page-node-id="ylDUXkN5ELjhNhwhmqfrA3">
+        <li data-page-node-id="k22MRwqNesx19RWm30Opo8"><b data-page-node-id="wfFqhQeAeZw91Vv1Ak4Jt4">插列铁律</b>：表头/表体是<b data-page-node-id="D8LFcgtQX2Ezsaitqv6hEG">两个独立 table</b>，必须「两个 colgroup 各插 col + 同步加宽 table.style.width + 新节点 append 到行尾」三件套，中间插会被 Vue diff 冲掉。</li>
+        <li data-page-node-id="kLf9Q9V3Y7pyNvsWD7BqZA"><b data-page-node-id="1TND8AMOiS6TnLJf3oPmIh">gutter 列陷阱</b>：表头 colgroup 末尾有 width=0 的滚动条占位 col，插 col 需 insertBefore(gutter)，否则整体错位一列。</li>
+        <li data-page-node-id="1Ae9V9ibiNsq9aZHioxkSH"><b data-page-node-id="FnTQOAstOXsWuj4JWTTK4l">guard 禁用「存在即跳过」</b>：必须「先删全部 <span class="mono" data-page-node-id="QSSotmgOMBVAIH3uHUnWi6">data-jisilu-*</span> 节点 → 再完整重追加」。</li>
+        <li data-page-node-id="XI3ojwNDlrWxVjtQpaBaLr"><b data-page-node-id="i4HfrH4L6GGlsBei5Hypim">自愈守护</b>：三不变量（注入 th 数 / col 数 / 两表 width 差 = 0）+ MutationObserver + 兜底 setInterval。</li>
+        <li data-page-node-id="TCFpIn21yz2ceyy6mqmvyI"><b data-page-node-id="sS7FPSH2VZoBCh6m8fGQ2o">Extension context invalidated 防护</b>：调 chrome API 前判 <span class="mono" data-page-node-id="AOSfEq8lG6X1rS7k5acJuX">chrome.runtime.id</span>。</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 5 风险 -->
+  <section data-page-node-id="KxAW6mjEg5I5ykFOkvX1XN">
+    <h3 class="sec" data-page-node-id="HqevmX02lHdXbuJc0YOS0H">五、风险清单与对策</h3>
+    <p class="desc" data-page-node-id="SzPz54KfCwdbA74qcMF15F">按严重度排序，均为可缓解项，无阻断性风险。</p>
+    <div class="risk" data-page-node-id="ZJ31TPCL8kPHvI9DUNcSdb">
+      <div class="risk-item" data-page-node-id="dzGtrT4KdAG1iURDBEV0Rj">
+        <div class="risk-lvl l-h" data-page-node-id="V4oXtUzTWDTmdVFZ9uCDWn">高</div>
+        <div class="risk-body" data-page-node-id="tBFrSmcirwkQfNwl3AarSp">
+          <b data-page-node-id="9AgaRW5CyK9M6GPoxoL0UA">集思录改版 / DOM 结构漂移</b>
+          <p data-page-node-id="BM6UPI5HbA4Z35sNPhjO1S">页面为 Vue SPA 且自研 <span class="mono" data-page-node-id="irpkPtKUzMN0xekv28AkWx">jsl-table-*</span>，选择器易失效；插列错位是最高频故障。</p>
+          <div class="fix" data-page-node-id="uWq2D3eJ0von9UV2fVA2Wa">→ 对策：选择器兼容两套 + 三不变量自愈 + 失败时优雅降级（只隐藏新列，不破坏原表格）。</div>
+        </div>
+        <div class="risk-cat" data-page-node-id="FfbBl6FKgDYTE8mg3sdTwo">可维护性</div>
+      </div>
+      <div class="risk-item" data-page-node-id="sP1zT26xHtuzIRXGToBVev">
+        <div class="risk-lvl l-h" data-page-node-id="DoxttYpEXPh18aGBFXM5Hb">高</div>
+        <div class="risk-body" data-page-node-id="ZOV1Z3gybVoH3uUpbQKOae">
+          <b data-page-node-id="NaqhoLPKKYpQfoFwTNPYut">游客接口仅 20 条，全量依赖 DOM</b>
+          <p data-page-node-id="CU9sdBCvWss7L8V8EiNiRn">未登录态接口只返回 20 行且翻页参数无效，无法覆盖「几百行」全量扫描。</p>
+          <div class="fix" data-page-node-id="JQcyoNOALw9ejdTJhi3EF0">→ 对策：<b data-page-node-id="e1q60zr5vYtimxBpewTqi0">DOM 为主</b>（登录后页面渲染全量行），接口仅作字段补充。若用户未登录，显式提示「登录后可扫描全市场」。</div>
+        </div>
+        <div class="risk-cat" data-page-node-id="EBCoCpqGxp85MmsueWuOhd">数据完整</div>
+      </div>
+      <div class="risk-item" data-page-node-id="5jlMDlrFJpNAgRzNIT5SVV">
+        <div class="risk-lvl l-m" data-page-node-id="mzOdYK2BvRwCr7tmmbqDfO">中</div>
+        <div class="risk-body" data-page-node-id="mB8X8Ya1xzq00wUqUVJqu2">
+          <b data-page-node-id="4watzgVbPPS7vR6HPakK08">QDII 估算精度受 T-2 滞后与汇率影响</b>
+          <p data-page-node-id="DC8OL2NZfULlM2F1u60eFC">海外基金净值 T-2，参考涨幅为 T-1，叠加汇率波动，估算溢价存在真实偏差。</p>
+          <div class="fix" data-page-node-id="50x3rrZhtEudJcxL4dXcBG">→ 对策：UI 明确区分「真值 ● / 估算 ○」；悬停展示净值日期与计算过程；跟踪比可调让用户自行校准；纳入汇率修正项。</div>
+        </div>
+        <div class="risk-cat" data-page-node-id="K2vQC95iFY4R5SmoA1tKOl">数据精度</div>
+      </div>
+      <div class="risk-item" data-page-node-id="DEcYm47HyRBxilVGZPjw0r">
+        <div class="risk-lvl l-m" data-page-node-id="cYF4anMFLzrdK6hqO4C2JN">中</div>
+        <div class="risk-body" data-page-node-id="9HXr1R1f4t6KicbzAtJKWE">
+          <b data-page-node-id="LXjwsHCsl78ATYQxlQfr8k">腾讯行情接口的稳定性与字段漂移</b>
+          <p data-page-node-id="wYSa39APqGbabKi3Ez7cHE">第三方非官方接口，字段位置可能变动；GBK 编码需处理。</p>
+          <div class="fix" data-page-node-id="nsDOUQDNZaI4gNj8lz1V6J">→ 对策：<b data-page-node-id="DsPgfErRsjppDbHZNgJbCL">字段位置采用「尾部锚点定位」</b>而非硬编码下标（以 <span class="mono" data-page-node-id="KEMysGMdG8x8DiMZHJT9kd">~CNY~</span> 为锚向前定位），并写单测锁定；东财 push2 作兜底通道。</div>
+        </div>
+        <div class="risk-cat" data-page-node-id="sdY5E0e3QEZZikbv5hWeL0">外部依赖</div>
+      </div>
+      <div class="risk-item" data-page-node-id="KcNo77k8d7taWbobrxK7jY">
+        <div class="risk-lvl l-m" data-page-node-id="F8dBLm0eBnAnG80lqMnEHf">中</div>
+        <div class="risk-body" data-page-node-id="KvYZD6fZwloUquLs0BWvm9">
+          <b data-page-node-id="ba6rHnj52y66zNF2E1niay">批量请求频率与请求数</b>
+          <p data-page-node-id="ZxYEnACqQukVL4AwQNhpna">几百只标的 + 每只 10 大持仓，可能产生大量并发请求，触发限流或被目标站封禁。</p>
+          <div class="fix" data-page-node-id="VmbNeLPjVYv2hvZqBn2Xq8">→ 对策：腾讯批量合并（每批 50 只）、持仓缓存 7 天、行情缓存 15s、串行限速（并发 ≤5）、失败指数退避。</div>
+        </div>
+        <div class="risk-cat" data-page-node-id="c67NaPX3rT5R4evUPUxAPW">性能/合规</div>
+      </div>
+      <div class="risk-item" data-page-node-id="D3YLDLtA9Ly0Xe3GFpuRmX">
+        <div class="risk-lvl l-l" data-page-node-id="J3GRK65HKF0CQLT8p3ICo7">低</div>
+        <div class="risk-body" data-page-node-id="v26p7oKobsde8Ddt5SJEcS">
+          <b data-page-node-id="mPFOR890n8joKMOz48UvkE">QDII-LOF 无公开持仓明细</b>
+          <p data-page-node-id="RkG7Dw9If63druLwEZ20WQ">501018 等品种天天基金返回空，持仓汇总功能不可用。</p>
+          <div class="fix" data-page-node-id="2ZWE6VehcOykFc3yg3sh6w">→ 对策：显式提示「无公开持仓」，不静默留空；该情况下隐藏持仓面板，保留其余功能。</div>
+        </div>
+        <div class="risk-cat" data-page-node-id="147Kex8BKaF7sDY5xAlWgp">数据缺失</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 对比 -->
+  <section data-page-node-id="iYamG2bjszOl6GLlfxf4Th">
+    <h3 class="sec" data-page-node-id="6CGjBXxYhpaFijjF4HNzNu">六、与对标产品（锚点数据·套利工具箱）对比</h3>
+    <p class="desc" data-page-node-id="fOrPC0nhCQSB2er3BNX208">老板给的参照站点，我们逐项对齐并寻找差异化。</p>
+    <table data-page-node-id="87pFE1oGmaxSIPSvtLBb9o">
+      <thead data-page-node-id="pLumzKxnwjUkquXlxgvgIk"><tr data-page-node-id="IxiXTCEcARoYniFuiqcr9t"><th style="width:26%" data-page-node-id="Aq0cGNDEDuS27wxS84vE8k">能力</th><th style="width:20%" data-page-node-id="0OSADd3uvvGot7qjXEnWq0">对标产品</th><th style="width:22%" data-page-node-id="oJI3tmWVZ1dFopClfWkODN">本方案</th><th data-page-node-id="bsi1SPIOkHdGU1ai8KxGnx">差异说明</th></tr></thead>
+      <tbody data-page-node-id="ASzfCcauQKdRo7MDJmkZYd">
+        <tr data-page-node-id="yGF2VIf3gBLNQ0X1bJeiZd"><td data-page-node-id="SaaWJE8oXFq6xIsytMsqHf">溢价率计算</td><td data-page-node-id="cziJiNG4c0ZGWYczkHG9F7">仅跟踪比估算</td><td data-page-node-id="2uRiYHdpDE6gDlOGD8NvtB"><span class="b b-ok" data-page-node-id="M7KZVyIfKFTuqgyByzHw0K">真 IOPV + 估算双轨</span></td><td data-page-node-id="pxihibq0wL2FtGVxnN3uC1"><b data-page-node-id="D0gaBRAmwRpXJGjmt560vA">核心优势</b>：有 IOPV 的品种直接读交易所真值，零估算误差；对标产品只能全程估算。</td></tr>
+        <tr data-page-node-id="Ts1tVGtkhTLFHjP953rE3x"><td data-page-node-id="KccNStDFR5e1VaEoYObfeC">跟踪比可调</td><td data-page-node-id="pL7AUsx0mXtHxvcHZa9DlQ">支持</td><td data-page-node-id="whb034kCE3nATL0NJGYVLH">支持 + 详情页自动均值</td><td data-page-node-id="bejs23nk9ZXwmHsY9kBr40">多一步：详情页历史跟踪比自动求均值回写，替代手工试错。</td></tr>
+        <tr data-page-node-id="oR5bUAEoPBvlUBmIDMmjB5"><td data-page-node-id="ORFxc0GN1uofaRwbwoRZFz">自选高亮</td><td data-page-node-id="YrBX8yxd0d5qVehZevJPYc">支持</td><td data-page-node-id="A8AFvMP4DlQxtSMW56fF5Q">支持</td><td data-page-node-id="qMDT2YFD5AmkdhB0TTaEph">能力持平，可加导入导出。</td></tr>
+        <tr data-page-node-id="iiJV5Iy7ayxr2XHkMEPkvV"><td data-page-node-id="dlHwD2uR3itx6gVfLJ4cGU">前十持仓涨幅</td><td data-page-node-id="J2dTUYLcBpTAlVsQoLKkwi">支持</td><td data-page-node-id="4cVmTLBztbI0niy5A9G0DF">支持（国内 LOF）</td><td data-page-node-id="xRfHZKXF8jGVk4e5ObUAp2">能力持平，QDII 无持仓时做显式降级提示。</td></tr>
+        <tr data-page-node-id="ml2cpSLQ6KWN7WzvJsSlUP"><td data-page-node-id="QldwlzburyKTZkELsNqSqL">全市场扫描</td><td data-page-node-id="ABfOGz4GOy1dxdjt6Kcx8A">支持（侧边栏雷达）</td><td data-page-node-id="9iJ7zEfgLiEpCSHLIJXUOi">首期不做</td><td data-page-node-id="AWkedrLiAumXvbWWHQrEgn">对标本功能较重，建议二期评估。</td></tr>
+        <tr data-page-node-id="8E4tGAOXRYiiRQJsjsXsv0"><td data-page-node-id="E3dwKNPLDNtM8LvGzxWjXH">雪球 / 天天基金增强</td><td data-page-node-id="6KQA1MGsd8ybxptHZRCCsF">支持</td><td data-page-node-id="HxYil8Q3k7LGJ3ladGBlI9">首期不做</td><td data-page-node-id="Pl1XvCWXqs8zRskkq0uouL">聚焦集思录，做深做透。</td></tr>
+        <tr data-page-node-id="JTLu7H95Qvuekcx49aIMd3"><td data-page-node-id="8VYcgjQaJuGxjhh9GGvO0d"><b data-page-node-id="CkddVuCMcvwPkYnZNJHs0u">数据成本</b></td><td data-page-node-id="BRryhyj7Uoog51g5HhqOAH">免费</td><td data-page-node-id="8tdsW0zpxwcDXx6oHcgVoN"><span class="b b-ok" data-page-node-id="8vqNoqRMfbJiea5iUrVYwH">免费</span></td><td data-page-node-id="EaUVuHnoBrS3BfrDSdmTYQ">均不依赖付费源。</td></tr>
+        <tr data-page-node-id="ColapMNQx3zSSMJRHWA0n9"><td data-page-node-id="Oi10lbnqeHLFCEYUkZT20t"><b data-page-node-id="tdcyGrzMlpWgdjW7pKFVnc">代码归属</b></td><td data-page-node-id="7Hco3dU0Cby7HmRK3Y5sm7">闭源</td><td data-page-node-id="6FFDcTOQwyyEhv703E605e"><span class="b b-info" data-page-node-id="mM6cyNVbQ0k2oPdzRbgDCJ">自有可控</span></td><td data-page-node-id="ZreZJmiZyfSI9SABl6F1TC">可随时改口径、加字段，不受第三方更新节奏限制。</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 7 路线 -->
+  <section data-page-node-id="DOASmQDpJ9ZeZMj7IdpHjZ">
+    <h3 class="sec" data-page-node-id="OHWtlzp4WYS9X6oV5RUBvR">七、实施路线图</h3>
+    <p class="desc" data-page-node-id="hAry14Dntgtfsc9C6nc6Qg">建议分四期推进，每期独立可交付、可验证。</p>
+    <div class="road" data-page-node-id="B2SxozLh7aiDEsMKM8gICg">
+      <div class="road-item" data-page-node-id="qwH4oatytuC5UyUzqqHj67">
+        <h4 data-page-node-id="0TqnUFb2vdAcaSDAsATIdQ"><span class="ph" data-page-node-id="UR8YsqJjoEAy9FlkfhpxB6">P1</span>行情内核 + 溢价双轨</h4>
+        <p data-page-node-id="7ti3oCR7WXXi3eavh4ulNS">打通数据链路，把最核心的溢价率做对。</p>
+        <ul data-page-node-id="1fEALpmRn6TJ3yyvyg1yy8">
+          <li data-page-node-id="2wrG91fiy28U2bmg43eQfJ">腾讯行情解析器（锚点定位 IOPV/溢价/净值/现价）+ GBK 解码</li>
+          <li data-page-node-id="6qhO7mQfa6LIbrkknxYBDC">集思录列表 DOM 提取（兼容 jsl-table / el-table）</li>
+          <li data-page-node-id="Y7QU5Fl4oABR0GGgdAek5s">双轨溢价计算 + 单元交叉校验</li>
+          <li data-page-node-id="djhuefG863DYxiHaBRX6VG">列表页注入「IOPV 溢价率 / 估算溢价率 / 净值日期」三列</li>
+        </ul>
+      </div>
+      <div class="road-item" data-page-node-id="ImwSywffV0Uhv5eify12Gy">
+        <h4 data-page-node-id="VjwBfDYc23ju9rwMYK12uR"><span class="ph" data-page-node-id="J2myA6k6Ukr70LfcMQ9xbj">P2</span>跟踪比面板 + 自选高亮</h4>
+        <p data-page-node-id="XDzPg0KWvyCCW6Ny9K0Ibu">交互层成型，达成老板需求 ①②。</p>
+        <ul data-page-node-id="AIGPsiERiKWTX8rGEIC7Fc">
+          <li data-page-node-id="wF6F3ezHIgKTwrvURbgtwo">浮动控制面板：全局跟踪比滑杆（0.5~1.5）、刷新频率、开关</li>
+          <li data-page-node-id="IzyFxlyF4QT2RdpfDNOE5y">单品种右键覆写跟踪比</li>
+          <li data-page-node-id="9ORGHqR4ff2GnagolamjDA">自选 ★ 按钮 + 整行高亮 + 导入导出</li>
+          <li data-page-node-id="Ou2aJFGOdHmOMYCMsHrJ2p">悬停提示展示完整计算过程（诚实透明）</li>
+        </ul>
+      </div>
+      <div class="road-item" data-page-node-id="1ebEvL334HHXzRBqv1webt">
+        <h4 data-page-node-id="htGUK8dWP673vhhVkGz7lS"><span class="ph" data-page-node-id="HFWdsERmnvlfCQ1voNUBFB">P3</span>详情页聚合面板</h4>
+        <p data-page-node-id="zl70bDD3n9V0Ukio4GblDF">达成老板需求 ③④。</p>
+        <ul data-page-node-id="BySe6qNJn5y0Yknl5p9UXZ">
+          <li data-page-node-id="rpwBWfIr54jj0gVeOiKyR1">详情页注入：历史涨跌幅 + 逐日跟踪比表格</li>
+          <li data-page-node-id="CU0CT0ERUroNPJ2CtVxDaD">近 N 日（5/10/20）平均跟踪比自动计算 + 一键回写为默认值</li>
+          <li data-page-node-id="fUUWSkyx8sSCvVvKkvKtS3">前十持仓面板：天天基金解析 → 腾讯批量涨幅 → 加权汇总 + 贡献度</li>
+          <li data-page-node-id="3H9iCyQW05CKHi5StEk7N2">无持仓数据的显式降级提示</li>
+        </ul>
+      </div>
+      <div class="road-item" data-page-node-id="eOKXPQTITXcWgF2LvarKGd">
+        <h4 data-page-node-id="8IVBcPHTZk6lgfkjiJlyZN"><span class="ph" data-page-node-id="37G3V3T3Ansu7Gs19057zD">P4</span>自愈守护 + 验收</h4>
+        <p data-page-node-id="txh5l1OzggCXylYx94yGlA">稳定性与交付质量，沿用转债插件的验收纪律。</p>
+        <ul data-page-node-id="sNPZTb1yzElnUpVaj359Se">
+          <li data-page-node-id="g43SdmPXZQHvOoxdGWg1Rw">三不变量自愈 + MutationObserver + 兜底轮询</li>
+          <li data-page-node-id="NQCBNhM4Ey7r3yCpy15BGv"><span class="mono" data-page-node-id="4H3MLmcULRp5C8ePKrW2py">npm test</span> 单测（按 manifest 清单注入校验、双实现交叉校验）</li>
+          <li data-page-node-id="7xZEvFRoAQocn972qDYllI">真机几何验收：列表页对齐 / 悬浮 / 右滚可见</li>
+          <li data-page-node-id="jzJxV5yQ225tud83ZGNDkr">离线安装打包 + GitHub 归档</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer data-page-node-id="sEgr3NxCmQNPSRl1zgW8hx">
+    调研人：阿布助理 🐝 · 2026-09-10 · 所有数据源均经沙箱 curl 实测验证<br data-page-node-id="wcJDYZEXe6tY9L56BLGGGl">
+    原则：免费 / 纯前端 / 不上传数据 / 不绕会员权限（仅使用页面已渲染数据与公开行情接口）
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,65 @@
+{
+  "manifest_version": 3,
+  "name": "集思录套利增强（QDII/LOF/ETF 实时溢价）",
+  "version": "0.4.0",
+  "description": "列表页注入「实时净值 + 实时溢价」两列，三级数据源自适应：● 交易所 IOPV 官方值 / ◐ HaoETF 期货锚点估值（跨境）/ ○ 自算推算；悬停展示计算过程、原理与折价套利建议。详情页决策面板含真实净值序列与波动特征。",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    },
+    "default_title": "集思录套利增强"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.jisilu.cn/*",
+    "https://qt.gtimg.cn/*",
+    "https://fundf10.eastmoney.com/*",
+    "https://fund.eastmoney.com/*",
+    "https://www.haoetf.com/*",
+    "https://push2.eastmoney.com/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.jisilu.cn/data/qdii/",
+        "https://www.jisilu.cn/data/qdii/*",
+        "https://www.jisilu.cn/data/lof/",
+        "https://www.jisilu.cn/data/lof/*",
+        "https://www.jisilu.cn/data/etf/",
+        "https://www.jisilu.cn/data/etf/*",
+        "https://www.jisilu.cn/data/fund/",
+        "https://www.jisilu.cn/data/fund/*",
+        "https://www.jisilu.cn/web/data/qdii/*",
+        "https://www.jisilu.cn/web/data/lof/*",
+        "https://www.jisilu.cn/web/data/etf/*"
+      ],
+      "js": [
+        "core/format.js",
+        "core/quotes.js",
+        "core/premium.js",
+        "core/dom.js",
+        "core/holdings.js",
+        "core/nav.js",
+        "core/track.js",
+        "storage/repository.js",
+        "content/ui/styles.js",
+        "content/ui/panel.js",
+        "content/jisilu-list.js",
+        "content/jisilu-detail.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
