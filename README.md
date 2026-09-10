@@ -158,13 +158,26 @@ HaoETF 的算法正是把锚点换回海外期货：`实时估值 = T-1 估值 +
 
 ## 五、安装
 
+### 方式一：下载安装包（适合不想碰命令行的）
+
+到 [Releases](https://github.com/SongYouAI/jisilu-arbitrage-enhancer/releases) 下载最新 `jisilu-arbitrage-enhancer-v*.zip` 并解压。
+
+### 方式二：克隆仓库
+
+```bash
+git clone https://github.com/SongYouAI/jisilu-arbitrage-enhancer.git
+```
+
+### 加载（两种方式相同）
+
 1. 打开 `chrome://extensions/`
 2. 右上角开启「开发者模式」
-3. 点击「加载已解压的扩展程序」→ 选择本目录 `jisilu-arbitrage/`
-4. 打开集思录列表页，`Cmd+R` 刷新
+3. 点击「加载已解压的扩展程序」→ 选择**含 `manifest.json` 的那一层目录**（仓库根 / 解压出的 `jisilu-arbitrage-enhancer/`）
+4. 打开集思录列表页（`/data/qdii/`、`/data/lof/`、`/data/etf/`），`Cmd+R` 刷新
 
 > 改动代码后需在扩展页点 ↻ 重载，并刷新集思录页面。
 > 改动 `manifest.json` 后**必须**重载扩展。
+
 
 ---
 
