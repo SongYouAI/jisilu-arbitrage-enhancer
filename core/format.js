@@ -37,6 +37,20 @@
     return v.toFixed(digits === undefined ? 3 : digits);
   }
 
+  /**
+   * 行情时间戳 → HH:MM。输入腾讯的 14 位格式「20260917103000」。
+   * 用途：把「这个数更新到几点」显式告诉用户 —— 盘后看到的是收盘值，
+   * 不能让人误以为还是实时值。位数不足（如只有日期）返回空串，不猜。
+   */
+  function hhmm(ts) {
+    const s = String(ts || '').replace(/\D/g, '');
+    if (s.length < 12) return '';
+    const h = s.slice(8, 10);
+    const mi = s.slice(10, 12);
+    if (Number(h) > 23 || Number(mi) > 59) return '';
+    return `${h}:${mi}`;
+  }
+
   /** 今天日期 YYYY-MM-DD（本地时区） */
   function today() {
     const d = new Date();
@@ -55,5 +69,5 @@
     return Math.round((now - d) / 86400000);
   }
 
-  global.JsaFormat = { number, pct, colorOf, fixed, today, daysAgo };
+  global.JsaFormat = { number, pct, colorOf, fixed, hhmm, today, daysAgo };
 })(typeof window !== 'undefined' ? window : globalThis);

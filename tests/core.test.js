@@ -158,7 +158,7 @@ test('加权涨幅：按权重计算，缺数据时降级', () => {
   assert.strictEqual(none.avg, null);
 });
 
-test('跟踪比：平均值计算与噪声过滤', () => {
+test('跟踪比：过原点最小二乘估计 + 噪声过滤', () => {
   const recs = [
     { date: 'd1', navInc: 1.0, indexInc: 1.0 },
     { date: 'd2', navInc: 0.9, indexInc: 1.0 },
@@ -167,7 +167,10 @@ test('跟踪比：平均值计算与噪声过滤', () => {
   const a = T.average(recs, 10);
   assert.ok(a.ok);
   assert.strictEqual(a.samples, 2, '噪声样本应被过滤');
-  assert.ok(Math.abs(a.avg - 0.95) < 1e-9, `均值应为 0.95，实际 ${a.avg}`);
+  // k̂ = Σxy/Σx² = (1×1.0 + 1×0.9)/(1+1) = 0.95（本组 |x| 相等，与逐日比值均值同值）
+  assert.ok(Math.abs(a.avg - 0.95) < 1e-9, `k̂ 应为 0.95，实际 ${a.avg}`);
+  assert.ok(Math.abs(a.avgRatio - 0.95) < 1e-9, '旧口径对照值也应为 0.95');
+  assert.ok(a.r2 !== null, '应给出拟合优度 R²');
 });
 
 test('跟踪比：样本不足时返回 ok=false', () => {

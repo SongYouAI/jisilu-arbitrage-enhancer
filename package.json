@@ -1,6 +1,6 @@
 {
   "name": "jisilu-arbitrage",
-  "version": "0.4.0",
+  "version": "0.5.4",
   "private": true,
   "description": "集思录 QDII/LOF/ETF 套利增强插件：三级实时溢价（IOPV/期货锚点/自算）、详情页决策面板",
   "scripts": {

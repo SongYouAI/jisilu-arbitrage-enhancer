@@ -92,6 +92,63 @@
   }
 
   /**
+   * 跟踪比合法区间 [0.05, 1.5]，非法输入回落 1.00。
+   *
+   * 之所以放在这里而不是各页面自己写一份：跟踪比有四级来源
+   * （手动设定 / 历史回归 / 股票占比 ÷ 100 / 全局滑杆），每级都要夹紧，
+   * 列表页与详情页必须同口径。2026-09-17 曾因 list.js 漏定义同名局部函数，
+   * 导致「股票占比」这一档每行抛 ReferenceError、整列被兜成「—」的线上事故。
+   */
+  function clampRatio(v) {
+    const n = Number(v);
+    if (!isFinite(n)) return 1;
+    return Math.min(1.5, Math.max(0.05, Number(n.toFixed(2))));
+  }
+
+  /** 历史回归档的统一文案（列表页读缓存、详情页用现场回归，措辞必须一致） */
+  function regLabel(win, samples) {
+    return `历史回归·${win ? `近${win}日` : '缓存'}（${samples || '?'} 样本）`;
+  }
+
+  /**
+   * 跟踪比四级优先级链 —— **唯一真相源**，列表页与详情页都必须调用本函数。
+   *
+   * 为什么不许各写一套：2026-09-17 老板实测报「首页与详情页同一只基金跟踪比对不上」。
+   * 根因是这条链被复制成两份且输入源不同 ——
+   *   · 详情页多一档「页面现场回归」，且压在缓存档之上（列表页没有历史表，复现不出这一档）；
+   *   · 「股票占比」列表页取 `stock_ratio` 列、详情页取正文正则，取不到时详情页直接掉到全局 1.00。
+   * 于是同一只基金两个页面各算各的，必然对不上。
+   *
+   * 现在的约定：**先把各档数据归一到同一批来源（回归→共享缓存、股票占比→共享缓存），
+   * 再交给本函数统一裁决**，两页结果必然一致。
+   *
+   * 优先级：手动设定 > 历史回归 > 股票占比 > 全局滑杆
+   * @param {Object} o { code, overrides, autoRatio, pageReg, stockPct, globalRatio }
+   * @returns {{ratio:number, label:string, src:'override'|'reg'|'stock'|'global'}}
+   */
+  function pickRatio(o) {
+    const c = o || {};
+
+    // 1) 手动设定（优先级最高，两页都只读 jsa.overrides[code]）
+    const ov = c.overrides && c.overrides[c.code];
+    if (ov != null) return { ratio: clampRatio(ov), label: '手动设定', src: 'override' };
+
+    // 2) 历史回归：详情页有「页面现场回归」时用它（更新），否则用共享缓存。
+    //    详情页写入缓存时带 win/samples，故两页文案与数值都一致。
+    const live = c.pageReg && c.pageReg.ok && c.pageReg.samples >= 3 ? c.pageReg : null;
+    if (live) return { ratio: clampRatio(live.avg), label: regLabel(live.win || 10, live.samples), src: 'reg' };
+    const au = c.autoRatio && c.autoRatio[c.code];
+    if (au && au.ratio != null) return { ratio: clampRatio(au.ratio), label: regLabel(au.win, au.samples), src: 'reg' };
+
+    // 3) 股票占比（净值涨跌 ≈ 仓位 × 持仓涨幅；数值来源必须两页同源）
+    const sp = c.stockPct;
+    if (sp != null && sp > 0) return { ratio: clampRatio(sp / 100), label: `股票占比 ${sp}%`, src: 'stock' };
+
+    // 4) 全局滑杆兜底
+    return { ratio: clampRatio(c.globalRatio), label: '全局默认', src: 'global' };
+  }
+
+  /**
    * 数据来源的三级标记（唯一真相源，列表页与悬停都从这里取，防止两处漂移）
    *   ●  IOPV     —— 交易所官方实时净值估值
    *   ◐  HAOETF   —— HaoETF 期货锚点实时估值（第三方估算）
@@ -200,6 +257,7 @@
       }
     } else if (nav.source === 'HAOETF') {
       L.push(`实时估值：${nav.value}　◐ 期货锚点（第三方估算）`);
+      if (row.haoEtfAsOf) L.push(`估值更新：${row.haoEtfAsOf}（HaoETF 页面发布时间）`);
       L.push('');
       L.push('💡 这个数是怎么来的？');
       L.push('跨境基金在 A 股盘中，海外市场是休市的 —— 海外股票根本不交易。');
@@ -242,11 +300,14 @@
         L.push('未修正今天的涨跌 —— 效果等同于集思录自带的静态口径。');
       } else {
         L.push(`官方净值 ${res.nav}（${res.navDate || '日期不详'}${res.navLagDays !== null ? `，滞后 ${res.navLagDays} 天` : ''}）`);
-        L.push(`×（1 + 今日参考涨幅 ${res.refInc === null ? '—' : res.refInc + '%'} × 跟踪比 ${res.trackRatio}）`);
+        L.push(`×（1 + 今日参考涨幅 ${res.refInc === null ? '—' : res.refInc + '%'} × 跟踪比 ${res.trackRatio}${row.ratioSrcLabel ? `（${row.ratioSrcLabel}）` : ''}）`);
         L.push(`= ${res.estNav.toFixed(4)}`);
       }
       L.push('');
-      L.push('⚠️ 这是估算：跟踪误差、停牌股、仓位偏离都会带来偏差。跟踪比可在右下面板调节。');
+      L.push('⚠️ 这是估算：跟踪误差、停牌股、仓位偏离都会带来偏差。跟踪比每只基金独立生效：手动(详情页调) > 历史回归 > 股票占比 > 全局滑杆。');
+      L.push('💡 点击这个格子，可就地调整本基金的跟踪比（不必进详情页）。');
+      // P1 汇率诚实声明：○ 自算未做汇率修正
+      L.push('（○ 自算未做汇率修正：跨境品种若持仓为外币，人民币当日波动会影响其人民币净值，本估算未计入；如需可在控制台设 window.__jsaFxOverride = 当日人民币涨跌幅%。）');
     } else {
       L.push('净值：—');
       L.push('');
@@ -297,6 +358,8 @@
       L.push('集思录拿昨天的官方净值直接比价（静态），把今天的指数涨跌也混算成了折溢价；');
       L.push('本列先把今天的涨跌修正掉再比价。两者之差 ≈ 今日跟踪指数涨跌。');
     }
+    L.push('');
+    L.push('💡 点击这个格子，可就地调整本基金的跟踪比（不必进详情页）。');
     return L.join('\n');
   }
 
@@ -310,5 +373,8 @@
     markOf,
     labelOf,
     decode,
+    clampRatio,
+    pickRatio,
+    regLabel,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

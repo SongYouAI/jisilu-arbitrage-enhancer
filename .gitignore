@@ -3,6 +3,10 @@ node_modules/
 .DS_Store
 Thumbs.db
 
+# macOS 资源派生文件（AppleDouble，KIOXIA 等非 Apple 卷写入的 ._ 前缀文件）
+# 不忽略会导致 git add 时把大量 ._xxx 垃圾提交进仓库
+._*
+
 # 打包产物（源码已在仓库内，无需重复提交）
 *.zip
 *.crx

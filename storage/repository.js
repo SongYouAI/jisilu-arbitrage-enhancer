@@ -8,12 +8,15 @@
   const KEY_SETTINGS = 'jsa.settings';
   const KEY_WATCH = 'jsa.watchlist';
   const KEY_OVERRIDE = 'jsa.overrides';
+  const KEY_AUTORATIO = 'jsa.autoRatio';
+  const KEY_STOCKPCT = 'jsa.stockPct';
 
   const DEFAULTS = {
     enabled: true,
-    trackRatio: 1.0,     // 全局跟踪比（只影响 ○ 推算值）
+    trackRatio: 1.0,     // 全局跟踪比（只影响 ○ 推算值；四级优先级链的兜底）
     refreshSec: 30,      // 刷新频率（秒）
     autoRefresh: true,
+    panelCollapsed: true, // 控制面板默认折叠（只显示窄标题条，不再一打开就糊脸）
   };
 
   function hasStorage() {
@@ -70,11 +73,30 @@
   }
   function saveOverrides(o) { return set({ [KEY_OVERRIDE]: o }); }
 
+  // 历史回归自动跟踪比缓存：{ code: { ratio, samples, win, at } }
+  // 详情页解析历史表后自动写入；列表页按「手动 > 自动 > 股票占比 > 全局」取用
+  async function getAutoRatios() {
+    const r = await get([KEY_AUTORATIO]);
+    return r[KEY_AUTORATIO] || {};
+  }
+  function saveAutoRatios(o) { return set({ [KEY_AUTORATIO]: o }); }
+
+  // 股票占比缓存：{ code: 95.2 }
+  // 列表页有权威的 stock_ratio 列、详情页没有 —— 由列表页回写共享，详情页读取，
+  // 保证「股票占比」这一档两页取到同一个数（否则同一只基金两页跟踪比会对不上）。
+  async function getStockPcts() {
+    const r = await get([KEY_STOCKPCT]);
+    return r[KEY_STOCKPCT] || {};
+  }
+  function saveStockPcts(o) { return set({ [KEY_STOCKPCT]: o }); }
+
   global.JsaRepo = {
     DEFAULTS,
     getSettings, saveSettings,
     getWatchlist, saveWatchlist,
     getOverrides, saveOverrides,
+    getAutoRatios, saveAutoRatios,
+    getStockPcts, saveStockPcts,
     _get: get, _set: set,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

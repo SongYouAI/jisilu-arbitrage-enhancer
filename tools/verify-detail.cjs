@@ -130,6 +130,17 @@ async function grab(url, ua) {
     window.addEventListener('error', function (e) { window.__JSA_DETAIL_ERR__ = String(e.message); });
   `];
   files.forEach((f) => parts.push(`/* ${f} */\n` + fs.readFileSync(path.join(ROOT, f), 'utf8')));
+  // 注入共享「股票占比」缓存（模拟列表页已回写），用来验证详情页读的确实是共享值，
+  // 而不是像旧实现那样在本页用正文正则猜（猜不到就掉到全局 1.00 → 与列表页对不上）。
+  const SEED_PCT = 87.52;
+  parts.push(`
+    (function () {
+      var SEED = ${JSON.stringify({ [CODE]: SEED_PCT })};
+      if (window.JsaRepo) {
+        window.JsaRepo.getStockPcts = function () { return Promise.resolve(SEED); };
+      }
+    })();
+  `);
   parts.push(`
     (function () {
       var old = document.getElementById('jsa-detail-card'); if (old) old.remove();
@@ -143,8 +154,8 @@ async function grab(url, ua) {
               return d.querySelector('.k').textContent + '=' + d.querySelector('.v').textContent;
             });
             out.hasHoldingsTitle = (card.textContent || '').indexOf('前十大持仓') > -1;
-            out.hasTrackTitle = (card.textContent || '').indexOf('历史跟踪比') > -1;
-            out.hasNavFeature = (card.textContent || '').indexOf('净值波动特征') > -1;
+            out.hasTrackTitle = (card.textContent || '').indexOf('跟踪比（本基金）') > -1;
+            out.hasNavFeature = (card.textContent || '').indexOf('真实净值统计') > -1;
             out.hasFailPlaceholder = /未能获取|未能识别|加载中/.test(card.textContent || '');
             var tbl = card.querySelector('table');
             out.holdingRows = tbl ? tbl.querySelectorAll('tbody tr').length : 0;
@@ -152,6 +163,47 @@ async function grab(url, ua) {
               return Array.from(tr.children).map(function (td) { return td.textContent; }).join('|');
             }) : [];
             out.text = (card.textContent || '').replace(/\\s+/g, ' ').slice(0, 400);
+            // 自证：详情页展示的跟踪比必须等于共享函数 P.pickRatio 对**同一批输入**的裁决。
+            // 只要这条成立 + 列表页也走 pickRatio（verify-live 断言），两页就不可能再漂移。
+            var last = window.__jsaDetail && window.__jsaDetail.last;
+            if (last && window.JsaPremium && window.JsaPremium.pickRatio) {
+              var re = window.JsaPremium.pickRatio(last.inputs);
+              out.pickCheck = {
+                detailRatio: last.ratio, detailLabel: last.label, src: last.src,
+                sharedRatio: re.ratio, sharedLabel: re.label,
+                stockPct: last.inputs.stockPct,
+                ok: last.ratio === re.ratio && last.label === re.label,
+              };
+            } else {
+              out.pickCheck = { ok: false, missing: true };
+            }
+            // 悬浮态限高滚动 + 标题栏控制（收起 / 隐藏 / 恢复）
+            out.isFixed = card.classList.contains('jsa-dc-fixed');
+            out.maxHeight = getComputedStyle(card).maxHeight || '';
+            var bdEl = card.querySelector('.jsa-dc-bd');
+            out.bodyOverflowY = bdEl ? getComputedStyle(bdEl).overflowY : '';
+            out.hasControls = card.querySelectorAll('.jsa-dc-btn').length;
+            var btns = card.querySelectorAll('.jsa-dc-btn');
+            var minBtn = btns[0];
+            var hideBtn = btns[1];
+            if (minBtn) {
+              minBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+              out.collapsed = card.classList.contains('jsa-dc-min');
+              out.collapsedBodyDisplay = bdEl ? getComputedStyle(bdEl).display : '';
+              minBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+              out.expandedBack = !card.classList.contains('jsa-dc-min');
+            }
+            if (hideBtn) {
+              hideBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+              out.hiddenDisplay = getComputedStyle(card).display;
+              out.restoreChip = !!document.getElementById('jsa-dc-restore');
+              var chip = document.getElementById('jsa-dc-restore');
+              if (chip) {
+                chip.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                out.restoredDisplay = getComputedStyle(card).display;
+                out.restoreChipGone = !document.getElementById('jsa-dc-restore');
+              }
+            }
           }
           window.__JSA_DETAIL_RESULT__ = out;
         }, 1200);
@@ -180,6 +232,21 @@ async function grab(url, ua) {
   if (!res.exists) fails.push('面板未渲染');
   else {
     if (!(res.kvCount >= 4)) fails.push(`关键指标区块不足: ${res.kvCount}`);
+    // 详情页跟踪比必须由共享函数裁决，且必须读共享「股票占比」缓存（两页同源的关键）
+    if (!res.pickCheck || !res.pickCheck.ok) {
+      fails.push('详情页生效值 != 共享函数 pickRatio 裁决：' + JSON.stringify(res.pickCheck));
+    } else if (res.pickCheck.stockPct !== 87.52) {
+      fails.push(`详情页未读取共享股票占比缓存（读到 ${res.pickCheck.stockPct}，期望 87.52）→ 会与列表页漂移`);
+    }
+    // 面板可用性：限高滚动 + 收起 / 隐藏 / 恢复（老板反馈底部看不到、想能隐藏）
+    if (!(res.hasControls >= 2)) fails.push(`详情面板缺少收起/隐藏按钮（.jsa-dc-btn=${res.hasControls}）`);
+    if (!res.collapsed) fails.push('点击「收起」未生效');
+    if (res.collapsedBodyDisplay !== 'none') fails.push(`收起态内容区未隐藏（display=${res.collapsedBodyDisplay}）`);
+    if (!res.expandedBack) fails.push('再次点击未展开');
+    if (res.hiddenDisplay !== 'none') fails.push('点击「×」未隐藏面板');
+    if (!res.restoreChip) fails.push('隐藏后未出现右缘恢复竖条');
+    if (res.restoreChipGone === false) fails.push('点击恢复竖条后竖条未消失');
+    if (res.restoredDisplay === 'none') fails.push('点击恢复竖条未重新显示面板');
     if (holdings.ok && holdings.items.length) {
       if (!res.hasHoldingsTitle) fails.push('持仓数据可用却未渲染持仓区块');
       if (!res.holdingRows) fails.push('持仓表格未渲染');

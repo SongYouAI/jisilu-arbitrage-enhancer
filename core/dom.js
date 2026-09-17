@@ -71,14 +71,20 @@
       nav: F.number(cellText(tr, 'fund_nav')),
       navDate: navDateOf(tr),
       // QDII 页用 ref_increase_rt，ETF 页用 index_increase_rt，LOF 页用 stock_increase_rt（十大持仓涨幅）
+      // P3 fund 页适配：/data/fund/ 页参考涨幅字段名未确认，防御性补 fund_increase_rt / increase_rt 候选
       refIncreaseRt: F.number(cellText(tr, 'ref_increase_rt')) ??
         F.number(cellText(tr, 'index_increase_rt')) ??
-        F.number(cellText(tr, 'stock_increase_rt')),
+        F.number(cellText(tr, 'stock_increase_rt')) ??
+        F.number(cellText(tr, 'fund_increase_rt')) ??
+        F.number(cellText(tr, 'increase_rt')),
       pageIopv: F.number(cellText(tr, 'iopv')),
       // 统一出口：页面 IOPV（登录可见）作为 merged.iopv 的兜底来源
       iopv: F.number(cellText(tr, 'iopv')),
       pagePremium: F.number(cellText(tr, 'iopv_discount_rt')) ?? F.number(cellText(tr, 'nav_discount_rt')),
       indexName: cellText(tr, 'index_nm') || '',
+      // 股票占比（LOF 页字段名 stock_ratio，2026-09-17 真页实测确认）：
+      // 用作跟踪比默认值 —— 基金净值涨跌 ≈ 股票占比 × 持仓/指数涨幅，物理口径成立
+      stockPct: F.number(cellText(tr, 'stock_ratio')),
       applyStatus: cellText(tr, 'apply_status') || '',
       redeemStatus: cellText(tr, 'redeem_status') || '',
       volume: F.number(cellText(tr, 'volume')),
@@ -151,6 +157,10 @@
           else if (v && v.nodeType) td.appendChild(v);
           else td.textContent = '—';
         } catch (e) {
+          if (!warnedKeys.has(c.key)) {
+            warnedKeys.add(c.key);
+            console.warn(`[jisilu-arbitrage] 列「${c.key}」渲染异常（仅提示一次）：`, e);
+          }
           td.textContent = '—';
         }
         row.tr.appendChild(td);

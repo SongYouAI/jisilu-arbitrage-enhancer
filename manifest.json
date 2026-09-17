@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "集思录套利增强（QDII/LOF/ETF 实时溢价）",
-  "version": "0.4.0",
+  "version": "0.5.4",
   "description": "列表页注入「实时净值 + 实时溢价」两列，三级数据源自适应：● 交易所 IOPV 官方值 / ◐ HaoETF 期货锚点估值（跨境）/ ○ 自算推算；悬停展示计算过程、原理与折价套利建议。详情页决策面板含真实净值序列与波动特征。",
   "icons": {
     "16": "icons/icon-16.png",
@@ -53,6 +53,7 @@
         "core/holdings.js",
         "core/nav.js",
         "core/track.js",
+        "core/runtime.js",
         "storage/repository.js",
         "content/ui/styles.js",
         "content/ui/panel.js",

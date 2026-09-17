@@ -1,7 +1,7 @@
 /**
- * 集思录列表页增强（/data/qdii/、/data/lof/、/data/etf/）
+ * 集思录列表页增强（/data/qdii/、/data/lof/、/data/etf/、/data/fund/）
  *
- * 注入 4 列：自选 ★ / IOPV 溢价率(真值●) / 估算溢价率(○) / 净值日期
+ * 注入 2 列：实时净值（● 交易所 IOPV / ◐ HaoETF 期货锚点 / ○ 自算推算） / 实时溢价
  * 数据来源：页面 DOM（已渲染）+ 腾讯行情（IOPV、实时价、净值）
  */
 (function () {
@@ -23,6 +23,9 @@
     settings: null,
     quotes: {},
     haoetf: {},   // code -> { rtNav, rtPrem, applyLimit, ... } 跨境期货锚点估值
+    autoRatio: {},   // code -> { ratio, samples, win, at } 详情页历史回归缓存（第 2 档）
+    stockPctMap: {}, // code -> 股票占比%，列表页回写、与详情页同源（第 3 档）
+    haoetfAsOf: '',  // HaoETF 估值更新时间（◐ 档新鲜度展示）
     rows: [],
     tables: [],
     panel: null,
@@ -33,25 +36,12 @@
   };
 
   // —— chrome API 安全封装（防 extension context invalidated）——
-  function contextAlive() {
-    try {
-      return !!(window.chrome && chrome.runtime && chrome.runtime.id);
-    } catch (e) {
-      return false;
-    }
-  }
-  function safeSendMessage(msg) {
-    return new Promise((resolve) => {
-      if (!contextAlive()) return resolve(null);
-      try {
-        const r = chrome.runtime.sendMessage(msg);
-        if (r && typeof r.then === 'function') r.then(resolve).catch(() => resolve(null));
-        else chrome.runtime.sendMessage(msg, (res) => resolve(res || null));
-      } catch (e) {
-        resolve(null);
-      }
-    });
-  }
+  // P4：统一复用 core/runtime.js 的 JsaRuntime（原 list/detail 各写一遍，已抽取），附兜底实现。
+  const R = window.JsaRuntime || {};
+  const contextAlive = R.contextAlive || function () {
+    try { return !!(window.chrome && chrome.runtime && chrome.runtime.id); } catch (e) { return false; }
+  };
+  const safeSendMessage = R.safeSendMessage || function () { return Promise.resolve(null); };
 
   function ready() {
     return !!(document.documentElement && document.body);
@@ -85,6 +75,29 @@
     return cols;
   }
 
+  /**
+   * 每只基金的跟踪比：四级优先级链（用户 2026-09-17 拍板的方向 ——
+   * 「每只基金跟踪比应该不一样」，股票占比越低的基金跟指数越松）。
+   *   1. 手动设定  —— 列表页点格子 / 详情页「跟踪比」区块调整，写 jsa.overrides[code]
+   *   2. 历史回归  —— 详情页按近期「净值涨幅 ÷ 重仓涨幅」自动算，缓存 jsa.autoRatio[code]
+   *   3. 股票占比  —— 列表 DOM 的 stock_ratio 列 ÷ 100（净值涨跌 ≈ 仓位 × 持仓涨幅，物理口径）
+   *   4. 全局滑杆  —— settings.trackRatio，兜底默认
+   *
+   * ⚠️ 裁决逻辑**不在这里**，统一走 `P.pickRatio`（唯一真相源）。
+   * 详情页调的是同一个函数 —— 2026-09-17 两页各写一套曾导致「首页与详情页跟踪比对不上」。
+   */
+  function ratioOf(row, ctx) {
+    return P.pickRatio({
+      code: row.code,
+      overrides: ctx.overrides,
+      autoRatio: ctx.autoRatio,
+      // 股票占比优先用本行 stock_ratio 列；该列被登录墙挡住时回落到列表页回写的共享缓存
+      stockPct: row.stockPct != null ? row.stockPct
+        : (ctx.stockPctMap && ctx.stockPctMap[row.code] != null ? ctx.stockPctMap[row.code] : null),
+      globalRatio: ctx.settings.trackRatio,
+    });
+  }
+
   /** 合并页面 DOM 数据 + 腾讯行情，算出这一行的双轨结果 */
   function computeOf(row, ctx) {
     const q = ctx.quotes[row.code];
@@ -94,6 +107,7 @@
       if (q.iopv != null) merged.iopv = q.iopv;
       if (q.tencentPremium != null) merged.tencentPremium = q.tencentPremium;
       if (q.nav != null && merged.nav == null) merged.nav = q.nav;
+      if (q.time) merged.quoteTime = q.time; // 行情时间戳（数据新鲜度展示）
       // 净值日期只认页面标注值，不可用行情时间戳冒充
     }
     // 三级降级的第二档：HaoETF 期货锚点实时估值（仅跨境品种有；已验证自洽的才采用）
@@ -102,9 +116,11 @@
       merged.haoEtfNav = h.rtNav;
       merged.haoEtfPrem = h.rtPrem;
       merged.haoEtfLimit = h.applyLimit;
+      if (ctx.haoetfAsOf) merged.haoEtfAsOf = ctx.haoetfAsOf;
     }
-    const ratio = ctx.overrides[row.code] != null ? ctx.overrides[row.code] : ctx.settings.trackRatio;
-    return { res: P.compute(merged, { trackRatio: ratio }), merged };
+    const r = ratioOf(row, ctx);
+    merged.ratioSrcLabel = r.label;
+    return { res: P.compute(merged, { trackRatio: r.ratio }), merged };
   }
 
   /** 绑定自定义黑色悬浮（注意：不设 title，否则原生悬浮会与它重复出现） */
@@ -112,6 +128,44 @@
     el.addEventListener('mouseenter', (e) => UI.tip.show(text, e.clientX, e.clientY));
     el.addEventListener('mousemove', (e) => UI.tip.show(text, e.clientX, e.clientY));
     el.addEventListener('mouseleave', () => UI.tip.hide());
+  }
+
+  /**
+   * 点击格子 → 弹出「本基金跟踪比」调整浮层（就地校准，不必进详情页）。
+   * 这是列表页此前缺失的能力：跟踪比虽已按基金独立生效，但唯一的调整入口在详情页，
+   * 用户想为多只基金各调一次就得逐只点进详情页。
+   */
+  function attachEditor(el, row) {
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();   // 阻止冒泡到行（避免触发集思录自身的行点击/跳转）
+      e.preventDefault();
+      UI.tip.hide();
+      const cur = ratioOf(row, makeCtx());
+      const manual = (window.__jsaOverrides || {})[row.code] != null;
+      UI.openRatioEditor({
+        anchor: el,
+        code: row.code,
+        name: row.name,
+        ratio: cur.ratio,
+        ratioLabel: cur.label,
+        manual,
+        onApply: async (v) => {
+          const o = await Repo.getOverrides();
+          o[row.code] = P.clampRatio(v);
+          await Repo.saveOverrides(o);
+          window.__jsaOverrides = o;   // 同步缓存，ratioOf 立即可见
+          renderAll();
+        },
+        onClear: async () => {
+          const o = await Repo.getOverrides();
+          delete o[row.code];
+          await Repo.saveOverrides(o);
+          window.__jsaOverrides = o;
+          renderAll();
+        },
+      });
+    });
   }
 
   /** 渲染「实时净值」或「实时溢价」单元格，● 真值 / ○ 推算自适应 */
@@ -125,6 +179,7 @@
         span.textContent = '—';
         span.style.color = '#94a3b8';
         attachTip(span, P.tooltipNav(res, merged));
+        attachEditor(span, row);
         return span;
       }
       const isReal = nav.source === 'IOPV';
@@ -139,6 +194,7 @@
       if (isFutures) badge.style.color = '#185FA5';
       span.appendChild(badge);
       attachTip(span, P.tooltipNav(res, merged));
+      attachEditor(span, row);
       return span;
     }
 
@@ -147,6 +203,7 @@
       span.textContent = '—';
       span.style.color = '#94a3b8';
       attachTip(span, P.tooltipPremium(res, merged));
+      attachEditor(span, row);
       return span;
     }
     span.className = 'jsa-prem';
@@ -158,6 +215,7 @@
     if (res.source === 'HAOETF') badge.style.color = '#185FA5';
     span.appendChild(badge);
     attachTip(span, P.tooltipPremium(res, merged));
+    attachEditor(span, row);
     return span;
   }
 
@@ -188,6 +246,7 @@
     const resp = await withTimeout(safeSendMessage({ type: 'JSA_GET_HAOETF' }), 8000);
     if (resp && resp.ok && resp.data && resp.data.ok && resp.data.byCode) {
       state.haoetf = resp.data.byCode;
+      state.haoetfAsOf = resp.data.asOf || ''; // 估值更新时间（◐ 档新鲜度）
     }
   }
 
@@ -232,6 +291,9 @@
     return {
       quotes: state.quotes,
       haoetf: state.haoetf,
+      haoetfAsOf: state.haoetfAsOf || '',
+      autoRatio: state.autoRatio || {},
+      stockPctMap: state.stockPctMap || {},
       settings: state.settings,
       overrides: window.__jsaOverrides || {},
     };
@@ -252,8 +314,40 @@
     state.rows.forEach((r) => { r.tr = document.getElementById(r.code) || r.tr; });
     state.tables.forEach((t) => freezeLeadingCols(t));
     state.lastCount = state.rows.length;
+    persistStockPcts();
     syncPanelStat();
     return n;
+  }
+
+  /**
+   * 把本页 stock_ratio 列回写共享缓存 `jsa.stockPct`。
+   * 目的：详情页没有这一列，只能靠正文正则（常常取不到 → 掉到「全局默认」），
+   * 于是同一只基金两页跟踪比对不上。由列表页（权威来源）回写、详情页读取，两侧同源。
+   * 仅在值变化时才写，避免每 30 秒刷新都触碰存储。
+   */
+  function persistStockPcts() {
+    if (!Repo.saveStockPcts) return;
+    let changed = false;
+    state.rows.forEach((r) => {
+      if (r.stockPct != null && r.stockPct > 0 && state.stockPctMap[r.code] !== r.stockPct) {
+        state.stockPctMap[r.code] = r.stockPct;
+        changed = true;
+      }
+    });
+    if (changed) Promise.resolve(Repo.saveStockPcts(state.stockPctMap)).catch(() => {});
+  }
+
+  /**
+   * 重新读取共享存储（手动覆写 / 历史回归缓存 / 股票占比缓存）。
+   * 必要性：详情页会写入 autoRatio 缓存，若列表页只在 init 读一次，
+   * 用户「列表 → 详情 → 回列表」时不重载就仍是旧值 → 两页显示不一致。
+   */
+  async function refreshStored() {
+    try {
+      window.__jsaOverrides = await Repo.getOverrides();
+      if (Repo.getAutoRatios) state.autoRatio = await Repo.getAutoRatios();
+      if (Repo.getStockPcts) state.stockPctMap = await Repo.getStockPcts();
+    } catch (e) { /* 存储不可用时保持现值 */ }
   }
 
   /**
@@ -263,13 +357,33 @@
    * 注意：两条渲染路径（renderAll / paint(false)）都必须调它 ——
    * HaoETF 晚到后补画 ◐ 时若不同步，面板会继续写「◐ 0」与表格自相矛盾。
    */
+  /** 取本页行情时间戳中最新的一个（用于面板「行情 HH:MM」新鲜度展示） */
+  function latestQuoteTime() {
+    let max = '';
+    Object.keys(state.quotes || {}).forEach((c) => {
+      const t = state.quotes[c] && state.quotes[c].time;
+      if (t && String(t).length >= 12) max = t > max ? t : max;
+    });
+    return max;
+  }
+
   function syncPanelStat() {
     if (!state.panel) return;
-    const m = countMarks();
-    state.panel.setStat(
-      `本页 ${state.rows.length} 只 · ● ${m.iopv} 交易所官方` +
-      (m.futures ? ` · ◐ ${m.futures} 期货锚点` : '')
-    );
+    // 面板统计纯装饰，**绝不允许拖垮主渲染**：本函数在 renderAll() 中被调用，
+    // 一旦抛错会中断整表注入（表现为两列全空）。2026-09-17 曾因 F.hhmm 未导出踩过一次。
+    try {
+      const m = countMarks();
+      let stat = `本页 ${state.rows.length} 只 · ● ${m.iopv} 交易所官方`;
+      if (m.futures) stat += ` · ◐ ${m.futures} 期货锚点`;
+      const qt = latestQuoteTime();
+      if (qt && typeof F.hhmm === 'function') stat += ` · 行情 ${F.hhmm(qt)}`;
+      state.panel.setStat(stat);
+    } catch (e) {
+      if (!syncPanelStat.warned) {
+        syncPanelStat.warned = true;
+        console.warn('[jisilu-arbitrage] 面板统计同步失败（仅提示一次，不影响表格）：', e);
+      }
+    }
   }
 
   /** 统计已渲染的标记数量：数净值列徽标（每只基金最多 1 次），分「交易所官方 / 期货锚点」两档 */
@@ -291,6 +405,9 @@
     }
     state.tables.forEach((t) => {
       D.injectColumns(t, buildCols(), makeCtx());
+      // P0 修复：补画路径（HaoETF 晚到后点亮 ◐）也要重挂冻结列，
+      // 否则横向滚动时代码/名称两列不再 sticky（此前只在 renderAll 挂）。
+      freezeLeadingCols(t);
     });
     state.rows.forEach((r) => {
       const tr = document.getElementById(r.code);
@@ -301,6 +418,8 @@
 
   async function run(full) {
     if (!state.settings || !state.settings.enabled) return;
+    // ⓪ 先同步共享存储：详情页刚写入的回归/股票占比缓存，列表页本轮就能用上（两页同值）
+    await refreshStored();
     // ① 行情是核心列，先拿先画。绝不与第三方源一起 await —— 否则源卡住则整页无列。
     await withTimeout(refreshQuotes(), 8000);
     paint(full);
@@ -366,6 +485,11 @@
 
     state.settings = await Repo.getSettings();
     window.__jsaOverrides = await Repo.getOverrides();
+    // 共享缓存预加载（四级优先级第 2/3 档）：
+    //   历史回归 autoRatio —— 详情页写入；股票占比 stockPct —— 本页回写供详情页同源。
+    // 缺失时这两档会静默失效、跟踪比掉到「全局默认」，故必须在此预加载。
+    state.autoRatio = Repo.getAutoRatios ? await Repo.getAutoRatios() : {};
+    state.stockPctMap = Repo.getStockPcts ? await Repo.getStockPcts() : {};
 
     if (!state.settings.enabled) return; // 关闭时仍保留面板入口由用户开启
     if (!D.findTables().length) { setTimeout(init, 500); return; }
@@ -390,6 +514,8 @@
         async onToggle(k, v) {
           state.settings[k] = v;
           await Repo.saveSettings(state.settings);
+          // 面板折叠/展开只是 UI 状态，存下来即可，不需要重绘表格
+          if (k === 'panelCollapsed') return;
           if (k === 'enabled') {
             if (v) { await run(true); startSelfHeal(); scheduleRefresh(); }
             else { stopSelfHeal(); D.clearInjected(document); }
@@ -419,4 +545,7 @@
   window.__jsaList.refreshQuotes = refreshQuotes;
   window.__jsaList.refreshHaoEtf = refreshHaoEtf;
   window.__jsaList.countMarks = countMarks;
+  window.__jsaList.ratioOf = ratioOf;
+  window.__jsaList.makeCtx = makeCtx;
+  window.__jsaList.refreshStored = refreshStored;
 })();

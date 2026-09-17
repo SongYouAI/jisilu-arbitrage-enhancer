@@ -18,7 +18,32 @@ const CACHE_TTL = {
   fail: 5 * 60000,       // 失败结果只缓存 5 分钟，避免一次失败锁死一周
 };
 
-const cache = new Map(); // key -> { at, value }
+const cache = new Map(); // key -> { at, value, ttl }
+const STORE_NS = 'jsa:cache:';
+
+/**
+ * P1 缓存持久化：service worker 被系统回收后内存 Map 清空，每次刷新都重抓第三方源。
+ * 这里用 chrome.storage.local 做二级持久缓存：SW 启动时异步预加载有效条目回 Map，
+ * put 时双写到 storage。storage 不可用时（意外）自动降级为纯内存缓存，不影响主流程。
+ */
+let cacheReady = Promise.resolve();
+if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+  cacheReady = (async () => {
+    try {
+      const all = await chrome.storage.local.get(null);
+      const now = Date.now();
+      Object.keys(all).forEach((k) => {
+        if (k.indexOf(STORE_NS) !== 0) return;
+        const e = all[k];
+        if (e && typeof e.at === 'number' && e.ttl && now - e.at < e.ttl) {
+          cache.set(k.slice(STORE_NS.length), e);
+        } else {
+          chrome.storage.local.remove(k).catch(() => {});
+        }
+      });
+    } catch (e) { /* storage 不可用时忽略，退回内存缓存 */ }
+  })();
+}
 
 /** 读取缓存：TTL 由写入时决定，成功与失败分别计时 */
 function cached(key) {
@@ -26,9 +51,13 @@ function cached(key) {
   if (hit && Date.now() - hit.at < hit.ttl) return hit.value;
   return null;
 }
-/** 写入缓存：ttl 省略时按成功结果处理（7 天） */
+/** 写入缓存：ttl 省略时按成功结果处理（7 天）；同步写内存，异步双写 storage */
 function put(key, value, ttl) {
-  cache.set(key, { at: Date.now(), value, ttl: ttl || CACHE_TTL.ok });
+  const entry = { at: Date.now(), value, ttl: ttl || CACHE_TTL.ok };
+  cache.set(key, entry);
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    chrome.storage.local.set({ [STORE_NS + key]: entry }).catch(() => {});
+  }
   return value;
 }
 
@@ -120,6 +149,7 @@ async function handleHoldings(code) {
  * （Referer 是浏览器禁用请求头，JS fetch 无法伪造），故净值序列走此源。
  */
 async function handleNavSeries(code) {
+  await cacheReady;
   const key = 'n:' + code;
   const hit = cached(key);
   if (hit !== null) return hit;

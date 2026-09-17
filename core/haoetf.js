@@ -147,6 +147,9 @@
   function selfCheck(item) {
     if (!item || item.rtNav === null || item.rtNav <= 0) return null;
     if (item.price === null || item.price <= 0 || item.rtPrem === null) return null;
+    // P4 加固：估值与溢价率应在合理区间，超出说明中段字段错位（如 rtNav 取到某巨大数值）
+    if (item.rtNav < 0.05 || item.rtNav > 100) return false;
+    if (item.rtPrem < -50 || item.rtPrem > 50) return false;
     const expect = ((item.price - item.rtNav) / item.rtNav) * 100;
     return Math.abs(expect - item.rtPrem) < 0.06;
   }
@@ -162,6 +165,10 @@
     const hit = REQUIRED_HEADS.filter((h) => heads.join('|').indexOf(h) < 0);
     if (heads.length && hit.length) {
       return { ok: false, reason: '页面结构已变，缺少表头：' + hit.join('、'), items: [], heads };
+    }
+    // P4 加固：再校验「代码 / 名称」锚点列，防止列整体偏移但 REQUIRED 恰好命中导致静默错位
+    if (heads.length && !/代码/.test(heads.join('|')) && !/名称/.test(heads.join('|'))) {
+      return { ok: false, reason: '页面结构已变：缺少代码/名称锚点列', items: [], heads };
     }
     const rows = src.match(/<tr>[\s\S]*?<\/tr>/gi) || [];
     const items = [];

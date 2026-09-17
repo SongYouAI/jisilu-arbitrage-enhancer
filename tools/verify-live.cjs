@@ -173,6 +173,53 @@ function buildInjectScript(quotes, refs, haoetf) {
         // 校验：表头注入数 == 表体注入数
         var bodyFirst = document.querySelector('table tbody tr[id]');
         out.bodyCols = bodyFirst ? bodyFirst.querySelectorAll('[data-jsa-col]').length : 0;
+
+        // —— 跨页一致性：列表页裁决 vs 详情页等效裁决（同一批共享缓存）——
+        // 详情页没有历史表处的现场回归，输入 = 共享回归缓存 + 共享股票占比缓存；
+        // 若两者输出不一致，说明又出现了「两页各算一套」的漂移。
+        out.crossPage = (function () {
+          var st = window.__jsaList;
+          var Pm = window.JsaPremium;
+          if (!st || !st.ratioOf || !Pm || !Pm.pickRatio) return { error: 'no ratioOf/pickRatio' };
+          var ctx = st.makeCtx();
+          var mism = [];
+          var pctMismatch = [];
+          var pctMissing = [];
+          var rowsWithStockPct = 0;
+          var checked = 0;
+          st.rows.forEach(function (r) {
+            var listOut = st.ratioOf(r, ctx);
+            var detailOut = Pm.pickRatio({
+              code: r.code,
+              overrides: ctx.overrides,
+              autoRatio: ctx.autoRatio,
+              pageReg: null,
+              stockPct: (ctx.stockPctMap && ctx.stockPctMap[r.code] != null) ? ctx.stockPctMap[r.code] : null,
+              globalRatio: ctx.settings.trackRatio
+            });
+            checked++;
+            if (listOut.ratio !== detailOut.ratio || listOut.label !== detailOut.label) {
+              if (mism.length < 5) mism.push({ code: r.code, list: listOut, detail: detailOut });
+            }
+            if (r.stockPct != null && r.stockPct > 0) {
+              rowsWithStockPct++;
+              if (!ctx.stockPctMap || ctx.stockPctMap[r.code] == null) {
+                if (pctMissing.length < 5) pctMissing.push(r.code);
+              } else if (ctx.stockPctMap[r.code] !== r.stockPct) {
+                if (pctMismatch.length < 5) pctMismatch.push({ code: r.code, col: r.stockPct, cache: ctx.stockPctMap[r.code] });
+              }
+            }
+          });
+          return {
+            checked: checked,
+            mismatches: mism,
+            pctMismatch: pctMismatch,
+            pctMissing: pctMissing,
+            rowsWithStockPct: rowsWithStockPct,
+            pctCacheSize: Object.keys(ctx.stockPctMap || {}).length,
+            sample: st.rows[0] ? { code: st.rows[0].code, out: st.ratioOf(st.rows[0], ctx) } : null
+          };
+        })();
       } catch (e) { out.errors.push(String(e && e.stack || e)); }
       window.__JSA_RESULT__ = out;
     }, 2200);
@@ -295,6 +342,47 @@ function evalInPage(js) {
     process.exit(1);
   }
 
+  // 4.5 列表页「就地调跟踪比」链路验证：点击格子 → 浮层 → 应用 → 写入 jsa.overrides
+  // （老板反馈：列表页点「实时溢价」后应能直接调这只基金的跟踪比）
+  try {
+    const step1 = JSON.parse(JSON.parse(String(evalInPage(`(function(){
+      var s = document.querySelector('td[data-jsa-col="prem"] span');
+      if (!s) return JSON.stringify({ clicked: false });
+      s.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      var p = document.getElementById('jsa-ratio-pop');
+      return JSON.stringify({
+        clicked: true, pop: !!p,
+        slider: !!(p && p.querySelector('input[type=range]')),
+        apply: !!(p && p.querySelector('.jp-btn.pri'))
+      });
+    })()`)).trim()));
+
+    let overrides = null;
+    let popClosed = null;
+    if (step1.pop) {
+      evalInPage(`(function(){
+        var p = document.getElementById('jsa-ratio-pop');
+        var rng = p.querySelector('input[type=range]');
+        rng.value = '1.20';
+        rng.dispatchEvent(new Event('input', { bubbles: true }));
+        p.querySelector('.jp-btn.pri').click();
+        return 'ok';
+      })()`);
+      await new Promise((r) => setTimeout(r, 900));
+      const step3 = JSON.parse(JSON.parse(String(evalInPage(
+        `JSON.stringify({ popClosed: !document.getElementById('jsa-ratio-pop'), overrides: (window.__JSA_STORE__||{})['jsa.overrides'] || null })`
+      )).trim()));
+      overrides = step3.overrides;
+      popClosed = step3.popClosed;
+    }
+    res.editor = {
+      clicked: step1.clicked, pop: step1.pop, slider: step1.slider,
+      apply: step1.apply, popClosed, overrides,
+    };
+  } catch (e) {
+    res.editor = { error: String((e && e.message) || e) };
+  }
+
   console.log('\n===== 验证结果 =====');
   console.log(JSON.stringify(res, null, 1));
 
@@ -333,6 +421,47 @@ function evalInPage(js) {
     if (res.marks.futures > 0 && statFut !== res.marks.futures) {
       fails.push(`面板 ◐ 数与表格不符：面板 ${statFut} / 表格 ${res.marks.futures}（「${stat}」）`);
     }
+  }
+  // 跨页一致性：列表页与详情页对同一只基金必须得出相同的跟踪比
+  const cp = res.crossPage || {};
+  if (cp.error) {
+    fails.push('跨页一致性检查无法执行: ' + cp.error);
+  } else {
+    if (cp.checked !== res.rows) {
+      fails.push(`跨页一致性检查覆盖行数不足: ${cp.checked}/${res.rows}`);
+    }
+    if (cp.mismatches && cp.mismatches.length) {
+      fails.push('列表页与详情页跟踪比不一致: ' + JSON.stringify(cp.mismatches));
+    }
+    if (cp.pctMismatch && cp.pctMismatch.length) {
+      fails.push('股票占比「列 vs 共享缓存」不一致: ' + JSON.stringify(cp.pctMismatch));
+    }
+    // 本页存在 stock_ratio 时，必须全部回写到共享缓存（详情页据此同源取值）
+    if (cp.rowsWithStockPct > 0) {
+      if (cp.pctMissing && cp.pctMissing.length) {
+        fails.push(`股票占比未回写共享缓存: ${cp.pctMissing.join(',')}（详情页会取不到 → 两页漂移）`);
+      }
+      if (cp.pctCacheSize < cp.rowsWithStockPct) {
+        fails.push(`股票占比缓存覆盖不全: ${cp.pctCacheSize}/${cp.rowsWithStockPct}`);
+      }
+    }
+  }
+
+  // 列表页就地调跟踪比（点格子 → 浮层 → 应用 → 写 overrides）
+  const ed = res.editor || {};
+  if (ed.error) {
+    fails.push('就地调跟踪比验证异常: ' + ed.error);
+  } else if (!ed.clicked) {
+    fails.push('页面上找不到「实时溢价」格子，无法验证就地调跟踪比');
+  } else {
+    if (!ed.pop) fails.push('点击「实时溢价」格子未弹出跟踪比浮层');
+    if (!ed.slider) fails.push('跟踪比浮层缺少数值滑杆');
+    if (!ed.apply) fails.push('跟踪比浮层缺少「应用」按钮');
+    const vals = ed.overrides ? Object.values(ed.overrides) : [];
+    if (!vals.length || Math.abs(Number(vals[0]) - 1.2) > 1e-9) {
+      fails.push(`应用后未写入 jsa.overrides（期望 1.2，实际 ${JSON.stringify(ed.overrides)}）`);
+    }
+    if (ed.popClosed === false) fails.push('应用后跟踪比浮层未关闭');
   }
 
   console.log('\n===== 断言 =====');

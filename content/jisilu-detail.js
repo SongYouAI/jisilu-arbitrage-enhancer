@@ -16,6 +16,7 @@
   const N = window.JsaNav;
   const D = window.JsaDom;
   const Repo = window.JsaRepo;
+  const UI = window.JsaUI;   // 轻提示（收起/隐藏后告知恢复入口）；缺失时全部调用点都有兜底
   if (!F || !P) return;
 
   const DETAIL_RE = /\/data\/(?:qdii|lof|etf|fund)\/detail\/(\d{6})/;
@@ -23,19 +24,13 @@
   /** 参考涨幅解析：复用 core/dom.js 的实现，避免两处正则漂移 */
   const pickRefIncrease = D && D.pickRefIncrease ? D.pickRefIncrease : () => ({ value: null, label: '' });
 
-  function contextAlive() {
+  // P4：复用 core/runtime.js 的 JsaRuntime（不再本文件重复实现），附兜底
+  const contextAlive = (window.JsaRuntime && window.JsaRuntime.contextAlive) || function () {
     try { return !!(window.chrome && chrome.runtime && chrome.runtime.id); } catch (e) { return false; }
-  }
-  function safeSendMessage(msg) {
-    return new Promise((resolve) => {
-      if (!contextAlive()) return resolve(null);
-      try {
-        const r = chrome.runtime.sendMessage(msg);
-        if (r && typeof r.then === 'function') r.then(resolve).catch(() => resolve(null));
-        else chrome.runtime.sendMessage(msg, (res) => resolve(res || null));
-      } catch (e) { resolve(null); }
-    });
-  }
+  };
+  const safeSendMessage = (window.JsaRuntime && window.JsaRuntime.safeSendMessage) || function () {
+    return Promise.resolve(null);
+  };
 
   /**
    * 消息出口。离线验证时可通过 window.__jsaMsgHook 注入 mock 数据（生产环境该钩子不存在，无副作用）。
@@ -74,6 +69,21 @@
     return d;
   }
 
+  /** 隐藏面板后，在视口右缘挂一个竖条恢复入口 */
+  function showRestoreChip() {
+    if (document.getElementById('jsa-dc-restore')) return;
+    const r = document.createElement('div');
+    r.id = 'jsa-dc-restore';
+    r.textContent = '套利面板';
+    r.title = '点击重新显示决策面板';
+    r.addEventListener('click', () => {
+      const c = document.getElementById('jsa-detail-card');
+      if (c) c.style.display = '';
+      r.remove();
+    });
+    document.body.appendChild(r);
+  }
+
   async function build(code) {
     const settings = await Repo.getSettings();
     const quoteResp = await send({ type: 'JSA_GET_QUOTES', payload: { codes: [code] } });
@@ -82,9 +92,13 @@
     // HaoETF 期货锚点实时估值（仅跨境品种有；单只查询，失败不阻塞主流程）
     // 与列表页共用同一档位口径，否则同一只基金会出现「列表 ◐ / 详情 ○」的不一致
     let hao = null;
+    let haoAsOf = '';
     try {
       const hr = await send({ type: 'JSA_GET_HAOETF', payload: { code } });
-      if (hr && hr.ok && hr.data && hr.data.row) hao = hr.data.row;
+      if (hr && hr.ok && hr.data) {
+        if (hr.data.row) hao = hr.data.row;
+        haoAsOf = hr.data.asOf || '';
+      }
     } catch (e) { /* 忽略 */ }
 
     const row = {
@@ -109,6 +123,14 @@
     const ref = pickRefIncrease(bodyText);
     row.refIncreaseRt = ref.value;
     row.refIncreaseLabel = ref.label;
+    // P5：跨境期货锚点估值更新时间（用于 ◐ 档新鲜度展示）
+    row.haoEtfAsOf = haoAsOf;
+    // 行情时间戳（数据新鲜度展示）
+    if (q && q.time) row.quoteTime = q.time;
+    // P2 修复：详情页此前未传 applyStatus，导致 advice() 的限购提示恒失效。
+    // 详情页无 apply_status 列，优先从页面文本提取申购状态，其次复用 HaoETF 申购限额（跨境品种已有准确值）。
+    const mApply = bodyText.match(/申购状态[:：]?\s*([^\s；;，,。]+)/);
+    row.applyStatus = mApply ? mApply[1] : (hao && hao.applyLimit ? hao.applyLimit : '');
     const mNav = bodyText.match(/(?:T-2净值|最新净值|单位净值)[^\d]{0,6}(\d+\.\d{3,4})/);
     if (mNav && row.nav == null) row.nav = parseFloat(mNav[1]);
     // 净值日期：只认页面标注的净值日期，不用行情时间冒充
@@ -131,7 +153,79 @@
       if (row.nav == null && nav.lastNav != null) row.nav = nav.lastNav;
     }
 
-    const res = P.compute(row, { trackRatio: settings.trackRatio });
+    // —— 跟踪比：每只基金独立生效（四级优先级链，与列表页同口径）——
+    // 提前解析页面历史表（格式一「净值涨幅+指数涨幅」/ 格式二「净值+重仓涨幅」按净值日期对齐），
+    // 既供优先级链取「历史回归」档，也供下方「跟踪比」区块展示，只解析一次。
+    let records = [];
+    if (T) {
+      document.querySelectorAll('table').forEach((t) => {
+        if (records.length) return;
+        const r = T.extractFromTable(t);
+        if (r && r.length) records = r;
+      });
+    }
+    const reg10 = records.length ? T.average(records, 10) : { ok: false };
+
+    const overrides = await Repo.getOverrides();
+    const autoMap = Repo.getAutoRatios ? await Repo.getAutoRatios() : {};
+
+    // 股票占比：**优先读列表页回写的共享缓存**，保证与列表页同一个数。
+    // 详情页没有 stock_ratio 列，只能靠正文正则，而正文常常根本没有「股票占比」字样 ——
+    // 旧实现此时 stockPct=null 会直接掉到「全局默认 1.00」，列表页却用 0.95 —— 这就是
+    // 「同一只基金两页跟踪比对不上」的主因之一。
+    const pctMap = Repo.getStockPcts ? await Repo.getStockPcts() : {};
+    let stockPct = pctMap[code] != null ? pctMap[code] : null;
+    let stockPctFromPage = false;
+    if (stockPct == null) {
+      const mStock = bodyText.match(/股票占比[^\d]{0,8}(\d+(?:\.\d+)?)\s*%/);
+      if (mStock) { stockPct = parseFloat(mStock[1]); stockPctFromPage = true; }
+    }
+
+    // 页面现场回归可用时写入共享缓存（带 win，供两页统一文案），
+    // 使列表页无需再进详情页即可拿到**同一个数**（这是两页一致的关键）。
+    if (reg10.ok && reg10.samples >= 3) {
+      autoMap[code] = { ratio: P.clampRatio(reg10.avg), samples: reg10.samples, win: 10, at: F.today() };
+      if (Repo.saveAutoRatios) Promise.resolve(Repo.saveAutoRatios(autoMap)).catch(() => {});
+    }
+    // 若股票占比是从正文里挖到的（列表页没来过 / 没缓存），回写共享，供列表页同源
+    if (stockPctFromPage && Repo.saveStockPcts) {
+      pctMap[code] = stockPct;
+      Promise.resolve(Repo.saveStockPcts(pctMap)).catch(() => {});
+    }
+
+    // 生效值：**必须走 P.pickRatio**（列表页调的是同一个函数），禁止再在本文件里写一套 if/else。
+    const pick = P.pickRatio({
+      code,
+      overrides,
+      autoRatio: autoMap,
+      pageReg: reg10,
+      stockPct,
+      globalRatio: settings.trackRatio,
+    });
+    const effRatio = pick.ratio;
+    const effLabel = pick.label;
+    const clampRatio = P.clampRatio;   // 统一用共享实现（带 isFinite 兜底，非数不会抛）
+    // 自证钩子：把本次裁决的**输入与输出**留档，供验证脚本断言
+    // 「详情页生效值 == P.pickRatio(同一批输入)」，杜绝本页再长出第二套链。
+    try {
+      window.__jsaDetail = window.__jsaDetail || {};
+      window.__jsaDetail.last = {
+        code,
+        ratio: pick.ratio,
+        label: pick.label,
+        src: pick.src,
+        inputs: {
+          code,
+          overrides,
+          autoRatio: autoMap,
+          pageReg: reg10,
+          stockPct,
+          globalRatio: settings.trackRatio,
+        },
+      };
+    } catch (e) { /* 仅验证用途，失败无副作用 */ }
+
+    const res = P.compute(row, { trackRatio: effRatio });
 
     // —— 组装卡片 ——
     const card = document.createElement('div');
@@ -140,7 +234,20 @@
 
     const hd = document.createElement('div');
     hd.className = 'jsa-dc-hd';
-    hd.innerHTML = `<span>套利增强 · 决策面板</span><span style="font-weight:400;opacity:.85">${row.code}${row.name ? ' · ' + row.name : ''}</span>`;
+    const hdT = document.createElement('span');
+    hdT.className = 'jsa-dc-t';
+    hdT.innerHTML = `套利增强 · 决策面板 <span style="font-weight:400;opacity:.85">${row.code}${row.name ? ' · ' + row.name : ''}</span>`;
+    // 标题栏右侧控制：收起（−/+）与隐藏（×）；隐藏后右缘竖条可再打开
+    const dcMin = document.createElement('span');
+    dcMin.className = 'jsa-dc-btn';
+    dcMin.title = '收起 / 展开';
+    const dcHide = document.createElement('span');
+    dcHide.className = 'jsa-dc-btn';
+    dcHide.textContent = '×';
+    dcHide.title = '隐藏面板（视口右缘的竖条可再打开）';
+    hd.appendChild(hdT);
+    hd.appendChild(dcMin);
+    hd.appendChild(dcHide);
     card.appendChild(hd);
 
     const bd = document.createElement('div');
@@ -193,7 +300,7 @@
       w.className = 'jsa-note jsa-warn';
       w.textContent = row.refIncreaseRt == null
         ? '该基金无实时 IOPV，也未拿到 HaoETF 期货锚点；本页未识别到「重仓涨幅 / T-1指数涨幅 / 指数涨幅 / 参考涨幅」任一字段，暂按官方净值静态比价（未修正今日涨跌，可能与实际差 1 个百分点以上）。'
-        : `该基金无实时 IOPV，也未命中 HaoETF 期货锚点（该源只覆盖 40 只跨境品种）。估算溢价 = 昨净值 ×(1 + ${row.refIncreaseLabel || '参考涨幅'} ${row.refIncreaseRt}% × 跟踪比 ${settings.trackRatio})，可在控制面板调整跟踪比校准。`;
+        : `该基金无实时 IOPV，也未命中 HaoETF 期货锚点（该源只覆盖 40 只跨境品种）。估算溢价 = 昨净值 ×(1 + ${row.refIncreaseLabel || '参考涨幅'} ${row.refIncreaseRt}% × 跟踪比 ${effRatio}（${effLabel}）)，可在下方「跟踪比」区块校准本基金取值。`;
       bd.appendChild(w);
     }
     if (note.textContent) bd.appendChild(note);
@@ -212,65 +319,113 @@
     hs.appendChild(holder);
     bd.appendChild(hs);
 
-    // —— 历史跟踪比（尝试从页面表格提取）——
+    // —— 跟踪比（本基金）：当前生效值 + 历史回归 + 手动调整 ——
     const trTitle = document.createElement('div');
     trTitle.style.cssText = 'font-weight:600;margin:14px 0 6px';
-    trTitle.textContent = '历史跟踪比';
+    trTitle.textContent = '跟踪比（本基金）';
     bd.appendChild(trTitle);
     const trBox = document.createElement('div');
     bd.appendChild(trBox);
 
-    let records = [];
-    document.querySelectorAll('table').forEach((t) => {
-      if (records.length) return;
-      const r = T.extractFromTable(t);
-      if (r && r.length) records = r;
-    });
+    const curLine = document.createElement('div');
+    curLine.className = 'jsa-note';
+    curLine.style.color = '#334155';
+    curLine.innerHTML = `当前生效：<b>${effRatio.toFixed(2)}</b>（${effLabel}）<br>` +
+      '<span style="color:#94a3b8">取用优先级：手动设定 &gt; 历史回归 &gt; 股票占比 &gt; 全局滑杆；' +
+      '本页与列表页同源同函数，同一只基金两处显示必然一致。</span>';
+    trBox.appendChild(curLine);
+
     if (records.length) {
+      // 历史回归：近 5/10/20 日「净值涨幅 ≈ k × 重仓(指数)涨幅」的**过原点最小二乘**解
+      // （净值日期对齐 + |指数涨幅|≥0.3% 过滤 + R² 拟合优度，见 core/track.js）
       [5, 10, 20].forEach((n) => {
         const a = T.average(records, n);
         const line = document.createElement('div');
         line.className = 'jsa-note';
         line.textContent = a.ok
-          ? `近 ${n} 日平均跟踪比：${a.avg.toFixed(3)}（样本 ${a.samples} 个${a.std != null ? '，标准差 ' + a.std.toFixed(3) : ''}）`
+          ? `近 ${n} 日回归：${a.avg.toFixed(3)}（最小二乘，样本 ${a.samples} 个` +
+            `${a.r2 != null ? '，拟合优度 R² ' + a.r2.toFixed(2) : ''}` +
+            `${a.residStd != null ? '，残差标准差 ' + a.residStd.toFixed(3) + '%' : ''}）`
           : `近 ${n} 日：有效样本不足`;
         trBox.appendChild(line);
       });
-      const btn = document.createElement('button');
-      btn.className = 'jsa-btn';
-      btn.textContent = '用近 10 日均值覆盖全局跟踪比';
-      btn.style.cssText = 'border:1px solid #cbd5e1;background:#f8fafc;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;margin-top:6px';
-      btn.addEventListener('click', async () => {
-        const a = T.average(records, 10);
-        if (!a.ok) return;
-        const s = await Repo.getSettings();
-        s.trackRatio = Math.min(1.5, Math.max(0.5, Number(a.avg.toFixed(2))));
-        await Repo.saveSettings(s);
-        btn.textContent = `已设为 ${s.trackRatio}（列表页生效）`;
-      });
-      trBox.appendChild(btn);
     } else if (nav.ok) {
       // 页面无历史表时，改用真实净值序列给出波动特征，不再是"未能识别"的失败态
-      trTitle.textContent = '净值波动特征（真实净值）';
       [5, 10, 20].forEach((n) => {
         const s = N.stats(nav.items, n);
         const line = document.createElement('div');
         line.className = 'jsa-note';
         line.textContent = s.ok
-          ? `近 ${n} 日：日均 ${(s.avg >= 0 ? '+' : '') + s.avg.toFixed(3)}%　波动 ${s.std.toFixed(3)}%　上涨占比 ${Math.round(s.upRatio * 100)}%`
+          ? `近 ${n} 日净值：日均 ${(s.avg >= 0 ? '+' : '') + s.avg.toFixed(3)}%　波动 ${s.std.toFixed(3)}%　上涨占比 ${Math.round(s.upRatio * 100)}%`
           : `近 ${n} 日：样本不足`;
         trBox.appendChild(line);
       });
       const tip = document.createElement('div');
       tip.className = 'jsa-note';
       tip.style.color = '#64748b';
-      tip.textContent = `本页无「净值涨幅 / 指数涨幅」历史表，以上为真实净值统计（截至 ${nav.asOf}）。跟踪比请在列表页控制面板手动设置。`;
+      tip.textContent = `本页无可用历史表，回归值不可用（以上为真实净值统计，截至 ${nav.asOf}）。可用下方滑杆手动设定。`;
       trBox.appendChild(tip);
     } else {
-      // 页面无表、净值序列也拿不到 → 整块移除，不留失败占位
-      if (trTitle.parentNode) trTitle.remove();
-      if (trBox.parentNode) trBox.remove();
+      const tip = document.createElement('div');
+      tip.className = 'jsa-note';
+      tip.textContent = '本页无历史表、净值序列也不可用，历史回归无法计算。可用下方滑杆手动设定。';
+      trBox.appendChild(tip);
     }
+
+    // 手动调整滑杆：只对本基金生效（写 jsa.overrides[code]，优先级最高）
+    const rowS = document.createElement('div');
+    rowS.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:8px';
+    const slLabel = document.createElement('span');
+    slLabel.textContent = '手动设定';
+    slLabel.style.cssText = 'font-size:12px;color:#64748b;flex:0 0 auto';
+    const sl = document.createElement('input');
+    sl.type = 'range'; sl.min = '0.05'; sl.max = '1.5'; sl.step = '0.01';
+    sl.value = String(effRatio);
+    sl.style.cssText = 'flex:1;accent-color:#f5b64a';
+    const sv = document.createElement('span');
+    sv.textContent = Number(effRatio).toFixed(2);
+    sv.style.cssText = 'min-width:38px;text-align:right;font-weight:600;color:#0b1b34;font-variant-numeric:tabular-nums';
+    sl.addEventListener('input', () => { sv.textContent = Number(sl.value).toFixed(2); });
+    sl.addEventListener('change', async () => {
+      const o = await Repo.getOverrides();
+      o[code] = Number(Number(sl.value).toFixed(2));
+      await Repo.saveOverrides(o);
+      build(code); // 重建面板：重算并刷新「当前生效」标签
+    });
+    rowS.appendChild(slLabel);
+    rowS.appendChild(sl);
+    rowS.appendChild(sv);
+    trBox.appendChild(rowS);
+
+    // 操作按钮：采用回归均值 / 恢复自动（删手动值）
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;margin-top:6px';
+    const btnStyle = 'border:1px solid #cbd5e1;background:#f8fafc;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;color:#334155';
+    if (reg10.ok) {
+      const btnUse = document.createElement('button');
+      btnUse.style.cssText = btnStyle;
+      btnUse.textContent = `采用近 10 日回归值 ${clampRatio(reg10.avg).toFixed(2)}`;
+      btnUse.addEventListener('click', async () => {
+        const o = await Repo.getOverrides();
+        o[code] = clampRatio(reg10.avg);
+        await Repo.saveOverrides(o);
+        build(code);
+      });
+      btnRow.appendChild(btnUse);
+    }
+    if (overrides[code] != null) {
+      const btnClear = document.createElement('button');
+      btnClear.style.cssText = btnStyle;
+      btnClear.textContent = '恢复自动（清除手动值）';
+      btnClear.addEventListener('click', async () => {
+        const o = await Repo.getOverrides();
+        delete o[code];
+        await Repo.saveOverrides(o);
+        build(code);
+      });
+      btnRow.appendChild(btnClear);
+    }
+    if (btnRow.children.length) trBox.appendChild(btnRow);
 
     card.appendChild(bd);
 
@@ -278,20 +433,47 @@
     const host = hostContainer();
     const old = document.getElementById('jsa-detail-card');
     if (old) old.remove();
-    if (host === document.body) {
-      card.style.cssText += 'position:fixed;right:18px;top:70px;width:340px;z-index:2147483000';
-    }
+    const oldRestore = document.getElementById('jsa-dc-restore');
+    if (oldRestore) oldRestore.remove();
+    // 悬浮态（找不到内容容器时）：加限高 + 内部滚动，避免内容长于视口时底部被裁掉
+    if (host === document.body) card.classList.add('jsa-dc-fixed');
     host.insertBefore(card, host.firstChild);
+
+    // 标题栏控制：收起 / 隐藏
+    // 两者效果都是「点了之后有东西不见了」，因此都补一句轻提示说明去了哪、怎么回来 ——
+    // 2026-09-17 老板反馈「一点击它就消失了」，实为本设计，但缺反馈就会被当 bug。
+    const syncDcMin = () => { dcMin.textContent = card.classList.contains('jsa-dc-min') ? '+' : '–'; };
+    syncDcMin();
+    dcMin.addEventListener('click', (e) => {
+      e.stopPropagation();
+      card.classList.toggle('jsa-dc-min');
+      syncDcMin();
+      if (card.classList.contains('jsa-dc-min') && UI && UI.toast) {
+        UI.toast('决策面板已收起 · 点标题栏右侧「+」可展开');
+      }
+    });
+    dcHide.addEventListener('click', (e) => {
+      e.stopPropagation();
+      card.style.display = 'none';
+      showRestoreChip();
+      if (UI && UI.toast) UI.toast('决策面板已隐藏 · 点视口右缘「套利面板」竖条可恢复');
+    });
 
     // 异步加载持仓
     (async () => {
       const hr = await send({ type: 'JSA_GET_HOLDINGS', payload: { code } });
       const data = hr && hr.ok ? hr.data : null;
       if (!data || !data.ok || !data.items || !data.items.length) {
-        // 拿不到就整块移除，不留"未能获取"占位。
-        // 原因：东财持仓接口强制校验 Referer，而 Referer 属浏览器禁用请求头、JS 无法伪造，
-        // 该源在扩展环境下长期不可用；与其展示失败态，不如不显示。
-        if (hs && hs.parentNode) hs.remove();
+        // P3 持仓：东财持仓接口强制校验 Referer（浏览器禁用请求头，JS 无法伪造），
+        // 该源在扩展环境下长期不可用。不再整块移除，而是保留标题并给出替代提示，
+        // 引导用户用本面板「历史跟踪比 / 净值波动特征」估算当日走势。
+        if (holder) {
+          holder.textContent = '';
+          const tip = document.createElement('div');
+          tip.className = 'jsa-note jsa-warn';
+          tip.textContent = '前十持仓暂不可用：东财持仓接口强制校验 Referer（浏览器禁用请求头，扩展无法伪造），该源在扩展环境下长期不可用。可用本面板「跟踪比（本基金）/ 真实净值统计」估算当日走势。';
+          holder.appendChild(tip);
+        }
         return;
       }
       const qr = await send({ type: 'JSA_GET_QUOTES', payload: { codes: data.items.map((i) => i.code) } });
